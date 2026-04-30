@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends
 import asyncpg
+from fastapi import Body, Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
+
 from app.core.config import settings
-from app.db.session import SessionLocal, get_db
+from app.db.session import get_db
 from app.models.task import Task
+from app.schemas.task import TaskCreate
 
 app = FastAPI()
 
@@ -29,3 +31,13 @@ def get_tasks(db: Session = Depends(get_db)):
     """Вернуть все задачи из БД"""
     tasks = db.query(Task).all()
     return tasks
+
+
+@app.post("/tasks")
+def create_tasks(task_data: TaskCreate, db: Session = Depends(get_db)):
+    """Создать новую задачу (статус new проставится автоматически)."""
+    task = Task(title=task_data.title)
+    db.add(task)
+    db.commit()
+    db.refresh(task)  # подтягиваем id после вставки
+    return task
