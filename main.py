@@ -1,6 +1,9 @@
-from app.core.config import settings
+from fastapi import FastAPI, HTTPException, Depends
 import asyncpg
-from fastapi import FastAPI, HTTPException
+from sqlalchemy.orm import Session
+from app.core.config import settings
+from app.db.session import SessionLocal, get_db
+from app.models.task import Task
 
 app = FastAPI()
 
@@ -19,3 +22,10 @@ async def db_check():
         return {"result": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/tasks")
+def get_tasks(db: Session = Depends(get_db)):
+    """Вернуть все задачи из БД"""
+    tasks = db.query(Task).all()
+    return tasks
