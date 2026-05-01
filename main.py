@@ -1,5 +1,5 @@
 import asyncpg
-from fastapi import Body, Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -34,10 +34,19 @@ def get_tasks(db: Session = Depends(get_db)):
 
 
 @app.post("/tasks")
-def create_tasks(task_data: TaskCreate, db: Session = Depends(get_db)):
+def create_task(task_data: TaskCreate, db: Session = Depends(get_db)):
     """Создать новую задачу (статус new проставится автоматически)."""
     task = Task(title=task_data.title)
     db.add(task)
     db.commit()
     db.refresh(task)  # подтягиваем id после вставки
+    return task
+
+
+@app.get("/tasks/{task_id}")
+def get_task(task_id: int, db: Session = Depends(get_db)):
+    """Вернуть одну задачу по id"""
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
     return task
