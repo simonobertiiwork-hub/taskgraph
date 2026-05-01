@@ -12,3 +12,6 @@ class Task(Base):
 
     # статус задачи (new / in_progress / done)
     status = Column(String, nullable=False, default="new")
+
+    # версия задачи для optimistic lock (защита от race conditions)
+    version = Column(Integer, nullable=False, default=1)

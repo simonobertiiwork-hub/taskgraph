@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.task import Task
-from app.schemas.task import TaskCreate
+from app.schemas.task import TaskCreate, TaskUpdate
 
 app = FastAPI()
 
@@ -49,4 +49,30 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@app.patch("/tasks/{task_id}")
+def update_task(task_id: int, task_data: TaskUpdate, db: Session = Depends(get_db)):
+    # 1. найти задачу
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # 2. проверить версию
+    if task.version != task_data.version:
+        raise HTTPException(status_code=409, detail="Version conflict")
+    
+    # 3. обновить поля
+    if task_data.title is not None:
+        task.title = task_data.title
+    if task_data.status is not None:
+        task.status = task_data.status
+    
+    # 4. увеличить версию
+    task.version += 1
+
+    # 5. сохранить в БД
+    db.commit()
+    db.refresh(task)
     return task
