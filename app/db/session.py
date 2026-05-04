@@ -1,3 +1,4 @@
+from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     async_sessionmaker,
@@ -20,7 +21,7 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
-async def get_db() -> AsyncSession:
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Создать асинхронную сессию БД для запроса (FastAPI сам закроет)."""
     async with AsyncSessionLocal() as session:
         yield session  # передаём сессию
