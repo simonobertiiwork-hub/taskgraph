@@ -1,16 +1,26 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    async_sessionmaker,
+    AsyncSession
+)
+
 from app.core.config import settings
 
-# TODO: перевести на async (async + create_async_engine) при нагрузке
-engine = create_engine(settings.database_url)
+# создаём асинхронный движок с ограничением пула соединений
+engine = create_async_engine(
+    settings.database_url,
+    echo=True,          # SQL-логи (полезно для отладки)
+    pool_size=5,        # сколько соединений держать открытыми
+    max_overflow=0,     # сколько дополнительных можно открыть при пике
+)
 
-SessionLocal = sessionmaker(bind=engine)
+# фабрика сессий (1 сессия = 1 транзакция, объекты живут после коммита)
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+)
 
-def get_db():
-    """Создать сессию БД для запроса (FastAPI сам закроет её после запроса)."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db() -> AsyncSession:
+    """Создать асинхронную сессию БД для запроса (FastAPI сам закроет)."""
+    async with AsyncSessionLocal() as session:
+        yield session  # передаём сессию
