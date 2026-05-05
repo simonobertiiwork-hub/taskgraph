@@ -1,3 +1,5 @@
+import asyncio
+
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
@@ -45,6 +47,16 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
     return task
 
 
+@app.get("/tasks/slow")
+async def get_tasks_slow(db: AsyncSession = Depends(get_db)):
+    """Вернуть все задачи с искусственной задержкой (демонстрация async)."""
+    await asyncio.sleep(3)
+
+    result = await db.execute(select(Task))
+    tasks = result.scalars().all()  # запрос → все задачи списком
+    return tasks
+
+
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
     """Вернуть одну задачу по id"""
@@ -57,10 +69,11 @@ async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 @app.patch("/tasks/{task_id}")
 async def update_task(task_id: int, task_data: TaskUpdate, db: AsyncSession = Depends(get_db)):
+    """Обновить задачу по id с проверкой версии (оптимистичная блокировка)."""
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()  # запрос → одна задача или None
 
-    # 1. найти задачу
+    # 1. проверить, что задача существует
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
