@@ -2,7 +2,7 @@ import asyncio
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -53,6 +53,14 @@ async def get_tasks_slow(db: AsyncSession = Depends(get_db)):
     await asyncio.sleep(3)
 
     result = await db.execute(select(Task))
+    tasks = result.scalars().all()  # запрос → все задачи списком
+    return tasks
+
+
+@app.get("/tasks/heavy")
+async def get_tasks_heavy(db: AsyncSession = Depends(get_db)):
+    """Тяжёлый запрос: сортировка по случайному числу (без индекса)."""
+    result = await db.execute(select(Task).order_by(func.random()))
     tasks = result.scalars().all()  # запрос → все задачи списком
     return tasks
 
