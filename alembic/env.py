@@ -17,6 +17,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from app.core.config import settings
 from app.db.base import Base
 from app.models.task import Task  # для автогенерации
+from app.models.graph import GraphNode, GraphEdge  # для автогенерации
 
 # конфиг из alembic.ini
 config = context.config
