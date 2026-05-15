@@ -1,18 +1,20 @@
 import asyncio
-
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException
-from sqlalchemy import select, func
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.graph import GraphNode, GraphEdge
 from app.models.task import Task
+from app.schemas.graph import GraphNodeCreate, GraphEdgeCreate
 from app.schemas.task import TaskCreate, TaskUpdate
 
 app = FastAPI()
 
 
+# ========== HEALTH & UTILS ==========
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
@@ -28,6 +30,8 @@ async def db_check():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# ========== TASKS ==========
 
 @app.get("/tasks")
 async def get_tasks(db: AsyncSession = Depends(get_db)):
@@ -102,3 +106,42 @@ async def update_task(task_id: int, task_data: TaskUpdate, db: AsyncSession = De
     await db.commit()
     await db.refresh(task)
     return task
+
+
+# ========== GRAPH ==========
+
+@app.post("/graph/nodes")
+async def create_graph_node(
+    node_data: GraphNodeCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Создать вершину графа."""
+    node = GraphNode(name=node_data.name)
+    db.add(node)
+    await db.commit()
+    await db.refresh(node)
+    return node
+
+
+@app.post("/graph/edges")
+async def create_graph_edges(
+    edge_data: GraphEdgeCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Создать ребро графа."""
+    edge = GraphEdge(
+        parent_id=edge_data.parent_id,
+        child_id=edge_data.child_id,
+    )
+    db.add(edge)
+    await db.commit()
+    await db.refresh(edge)
+    return edge
+
+
+@app.get("/graph/edges")
+async def get_graph_edges(db: AsyncSession = Depends(get_db)):
+    """Список всех рёбер графа."""
+    result = await db.execute(select(GraphEdge))
+    edges = result.scalars().all()  # запрос → список связей
+    return edges
