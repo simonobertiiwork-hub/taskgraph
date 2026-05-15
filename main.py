@@ -145,3 +145,36 @@ async def get_graph_edges(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(GraphEdge))
     edges = result.scalars().all()  # запрос → список связей
     return edges
+
+
+@app.get("/graph/walk/{node_id}")
+async def walk_graph(
+    node_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Рекурсивный обход графа от указанной вершины (без защиты от циклов)."""
+    query = text("""
+        WITH RECURSIVE graph_tree AS (
+            SELECT
+                gn.id,
+                gn.name,
+                1 AS depth
+            FROM graph_nodes gn
+            WHERE gn.id = :node_id
+
+            UNION ALL
+
+            SELECT
+                child.id,
+                child.name,
+                gt.depth + 1
+            FROM graph_tree gt
+            JOIN graph_edges ge ON ge.parent_id = gt.id
+            JOIN graph_nodes child ON child.id = ge.child_id
+        )
+        SELECT id, name, depth
+        FROM graph_tree;
+    """)
+    result = await db.execute(query, {"node_id": node_id})
+    rows = result.mappings().all()  # запрос → список словарей
+    return rows
