@@ -155,23 +155,19 @@ async def walk_graph(
     """Рекурсивный обход графа от указанной вершины (без защиты от циклов)."""
     query = text("""
         WITH RECURSIVE graph_tree AS (
-            SELECT
-                gn.id,
-                gn.name,
-                1 AS depth
+            SELECT gn.id, gn.name, 1 AS depth
             FROM graph_nodes gn
             WHERE gn.id = :node_id
 
             UNION ALL
 
-            SELECT
-                child.id,
-                child.name,
-                gt.depth + 1
+            SELECT child.id, child.name, gt.depth + 1
             FROM graph_tree gt
+
             JOIN graph_edges ge ON ge.parent_id = gt.id
             JOIN graph_nodes child ON child.id = ge.child_id
         )
+
         SELECT id, name, depth
         FROM graph_tree;
     """)

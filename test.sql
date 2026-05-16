@@ -20,19 +20,13 @@ INSERT INTO graph_edges (parent_id, child_id) VALUES
 
 -- 3. Рекурсивный обход от A (без цикла)
 WITH RECURSIVE graph_tree AS (
-    SELECT
-        id,
-        name,
-        1 AS depth
-    FROM graph_nodes
+    SELECT id, name, 1 AS depth 
+    FROM graph_nodes 
     WHERE name = 'A'
 
     UNION ALL
 
-    SELECT
-        child.id,
-        child.name,
-        gt.depth + 1
+    SELECT child.id, child.name, gt.depth + 1 
     FROM graph_tree gt
     JOIN graph_edges e ON e.parent_id = gt.id
     JOIN graph_nodes child ON child.id = e.child_id
@@ -47,19 +41,13 @@ INSERT INTO graph_edges (parent_id, child_id) VALUES
 -- 5. Рекурсивный обход от A (с циклом, но ограниченный глубиной)
 -- Результат: строки будут повторяться (A, B, C, A, B, C, ...) до глубины 10
 WITH RECURSIVE graph_tree AS (
-    SELECT
-        id,
-        name,
-        1 AS depth
+    SELECT id, name, 1 AS depth
     FROM graph_nodes
     WHERE name = 'A'
 
     UNION ALL
 
-    SELECT
-        child.id,
-        child.name,
-        gt.depth + 1
+    SELECT child.id, child.name, gt.depth + 1
     FROM graph_tree gt
     JOIN graph_edges e ON e.parent_id = gt.id
     JOIN graph_nodes child ON child.id = e.child_id
