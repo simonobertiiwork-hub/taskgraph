@@ -128,7 +128,41 @@ async def create_graph_edges(
     edge_data: GraphEdgeCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Создать ребро графа."""
+    """
+    Создать ребро графа с проверкой на цикл.
+    Запрещаем создание циклических зависимостей.
+    """
+    # проверяем, можно ли из child_id дойти до parent_id
+    cycle_check_query = text("""
+        WITH RECURSIVE path AS (
+            SELECT child_id
+            FROM graph_edges
+            WHERE parent_id = :child_id
+
+            UNION ALL
+
+            SELECT e.child_id
+            FROM graph_edges e
+            JOIN path p ON e.parent_id = p.child_id
+            WHERE p.child_id IS NOT NULL
+        )
+        SELECT child_id
+        FROM path
+        WHERE child_id = :parent_id
+        LIMIT 1
+    """)
+
+    result = await db.execute(
+        cycle_check_query,
+        {"child_id": edge_data.child_id, "parent_id": edge_data.parent_id},
+    )
+
+    if result.first():
+        raise HTTPException(
+            status_code=400,
+            detail="Cycle detected in graph (cannot create this edge)",
+        )
+
     edge = GraphEdge(
         parent_id=edge_data.parent_id,
         child_id=edge_data.child_id,
