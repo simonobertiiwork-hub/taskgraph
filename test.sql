@@ -10,6 +10,10 @@ DELETE FROM graph_nodes;
 ALTER SEQUENCE graph_nodes_id_seq RESTART WITH 1;
 ALTER SEQUENCE graph_edges_id_seq RESTART WITH 1;
 
+-- Уникальное ограничение на пару (parent_id, child_id) для предотвращения дубликатов
+ALTER TABLE graph_edges DROP CONSTRAINT IF EXISTS unique_edge;
+ALTER TABLE graph_edges ADD CONSTRAINT unique_edge UNIQUE (parent_id, child_id);
+
 -- 1. Добавим вершины
 INSERT INTO graph_nodes (name) VALUES ('A'), ('B'), ('C');
 

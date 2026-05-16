@@ -185,8 +185,9 @@ async def get_graph_edges(db: AsyncSession = Depends(get_db)):
 async def walk_graph(
     node_id: int,
     db: AsyncSession = Depends(get_db),
+    max_depth: int = 10,
 ):
-    """Рекурсивный обход графа от указанной вершины (без защиты от циклов)."""
+    """Рекурсивный обход графа от указанной вершины (с ограничением глубины)."""
     query = text("""
         WITH RECURSIVE graph_tree AS (
             SELECT gn.id, gn.name, 1 AS depth
@@ -197,14 +198,13 @@ async def walk_graph(
 
             SELECT child.id, child.name, gt.depth + 1
             FROM graph_tree gt
-
             JOIN graph_edges ge ON ge.parent_id = gt.id
             JOIN graph_nodes child ON child.id = ge.child_id
+            WHERE gt.depth < :max_depth
         )
-
         SELECT id, name, depth
         FROM graph_tree;
     """)
-    result = await db.execute(query, {"node_id": node_id})
+    result = await db.execute(query, {"node_id": node_id, "max_depth": max_depth})
     rows = result.mappings().all()  # запрос → список словарей
     return rows
