@@ -124,7 +124,7 @@ async def create_graph_node(
 
 
 @app.post("/graph/edges")
-async def create_graph_edges(
+async def create_graph_edge(
     edge_data: GraphEdgeCreate,
     db: AsyncSession = Depends(get_db),
 ):
