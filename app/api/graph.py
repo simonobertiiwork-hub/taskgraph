@@ -12,6 +12,13 @@ from app.core.exceptions import ValidationError, NotFoundError
 router = APIRouter(prefix="/graph", tags=["graph"])
 
 
+@router.get("/nodes")
+async def get_graph_nodes(db: AsyncSession = Depends(get_db)):
+    """Список всех вершин графа."""
+    result = await db.execute(select(GraphNode))
+    return result.scalars().all()
+
+
 @router.post("/nodes")
 async def create_graph_node(
     node_data: GraphNodeCreate,
