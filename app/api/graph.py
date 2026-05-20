@@ -91,9 +91,9 @@ async def get_graph_edges(db: AsyncSession = Depends(get_db)):
 async def walk_graph(
     node_id: int,
     db: AsyncSession = Depends(get_db),
-    max_depth: int = 10,
+    max_depth: int = 20,
 ):
-    """Рекурсивный обход графа от указанной вершины (с ограничением глубины)."""
+    """Рекурсивный обход графа от указанной вершины (с защитой от циклов)."""
     # проверяем, существует ли вершина
     node_result = await db.execute(select(GraphNode).where(GraphNode.id == node_id))
     node = node_result.scalar_one_or_none()
@@ -101,21 +101,23 @@ async def walk_graph(
         raise NotFoundError(f"Node with id {node_id} not found")
 
     query = text("""
-        WITH RECURSIVE graph_tree AS (
-            SELECT gn.id, gn.name, 1 AS depth
-            FROM graph_nodes gn
-            WHERE gn.id = :node_id
+        WITH RECURSIVE graph_tree(id, name, depth, path) AS (
+            SELECT id, name, 1, ARRAY[id]
+            FROM graph_nodes
+            WHERE id = :node_id
 
             UNION ALL
 
-            SELECT child.id, child.name, gt.depth + 1
+            SELECT child.id, child.name, gt.depth + 1, gt.path || child.id
             FROM graph_tree gt
             JOIN graph_edges ge ON ge.parent_id = gt.id
             JOIN graph_nodes child ON child.id = ge.child_id
-            WHERE gt.depth < :max_depth
+            WHERE
+                NOT (child.id = ANY(gt.path))
+                AND gt.depth < :max_depth
         )
         SELECT id, name, depth
-        FROM graph_tree;
+        FROM graph_tree
     """)
     result = await db.execute(query, {"node_id": node_id, "max_depth": max_depth})
     rows = result.mappings().all()
