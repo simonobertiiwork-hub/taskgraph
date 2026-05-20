@@ -32,9 +32,12 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/slow")
-async def get_tasks_slow(db: AsyncSession = Depends(get_db)):
+async def get_tasks_slow(
+    db: AsyncSession = Depends(get_db),
+    delay: int = 2
+):
     """Вернуть все задачи с задержкой на уровне БД (удерживает соединение)."""
-    await db.execute(text("SELECT pg_sleep(2)"))  # БД ждёт 2 секунды
+    await db.execute(text("SELECT pg_sleep(:delay)"), {"delay": delay})
     result = await db.execute(select(Task))
     tasks = result.scalars().all()
     return tasks
@@ -89,4 +92,5 @@ async def update_task(
         raise ConflictError("Version conflict")
 
     await db.commit()
+    await db.refresh(updated)
     return updated
