@@ -1,4 +1,4 @@
-from sqlalchemy import Column, ForeignKey, Integer, Text
+from sqlalchemy import Column, ForeignKey, Integer, Text, UniqueConstraint
 from app.db.base import Base
 
 
@@ -24,4 +24,8 @@ class GraphEdge(Base):
         Integer,
         ForeignKey("graph_nodes.id", ondelete="CASCADE"),
         nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("parent_id", "child_id", name="uq_graph_edge"),
     )
