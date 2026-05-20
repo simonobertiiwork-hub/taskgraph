@@ -1,24 +1,89 @@
+# ======================
 # Python
+# ======================
+
 __pycache__/
 *.py[cod]
 *.pyc
+
+# Test cache
 .pytest_cache/
+
+# Static analysis cache
 .mypy_cache/
 .ruff_cache/
 
+# Coverage
+.coverage
+htmlcov/
+
+# ======================
 # Virtual environment
+# ======================
+
 .venv/
 venv/
 
+# ======================
 # IDE
+# ======================
+
 .idea/
 .vscode/
 
-# OS
-.DS_Store
-
+# ======================
 # Environment
+# ======================
+
 .env
 
-# Alembic (версии миграций коммитим, но не кэш)
+# ======================
+# Operating system
+# ======================
+
+.DS_Store
+Thumbs.db
+
+# ======================
+# Logs
+# ======================
+
+*.log
+
+# ======================
+# Temporary files
+# ======================
+
+*.tmp
+
+# ======================
+# Build artifacts
+# ======================
+
+build/
+dist/
+
+# ======================
+# Alembic cache
+# (migration, files stay in git)
+# ======================
+
 alembic/__pycache__/
+
+# ======================
+# Python packaging
+# ======================
+
+*.egg-info/
+
+# ======================
+# Jupyter
+# ======================
+
+.ipynb_checkpoints/
+
+# ======================
+# Docker local overrides
+# ======================
+
+docker-compose.override.yml
