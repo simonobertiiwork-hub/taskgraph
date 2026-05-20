@@ -1,7 +1,7 @@
 """Роутер для задач (tasks)."""
 
 import asyncio
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +34,7 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 @router.get("/slow")
 async def get_tasks_slow(
     db: AsyncSession = Depends(get_db),
-    delay: int = 2
+    delay: int = Query(2, ge=0, le=10),
 ):
     """Вернуть все задачи с задержкой на уровне БД (удерживает соединение)."""
     await db.execute(text("SELECT pg_sleep(:delay)"), {"delay": delay})
@@ -68,7 +68,7 @@ async def update_task(
     db: AsyncSession = Depends(get_db)
 ):
     """Обновить задачу с атомарной проверкой версии (optimistic lock)."""
-    values_to_update = {"version": Task.version + 1}   # увеличиваем версию
+    values_to_update = {"version": Task.version + 1}
 
     if task_data.title is not None:
         values_to_update["title"] = task_data.title
@@ -87,8 +87,11 @@ async def update_task(
     result = await db.execute(stmt)
     updated = result.scalar_one_or_none()
 
-    # если версия изменилась, то конфликт
     if not updated:
+        # проверяем, существует ли задача
+        exists = await db.execute(select(Task.id).where(Task.id == task_id))
+        if not exists.scalar_one_or_none():
+            raise NotFoundError("Task not found")
         raise ConflictError("Version conflict")
 
     await db.commit()

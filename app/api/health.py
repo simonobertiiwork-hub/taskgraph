@@ -1,9 +1,10 @@
 """Health check endpoints."""
 
-import asyncpg
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import  settings
+from app.db.session import get_db
 
 router = APIRouter(tags=["health"])
 
@@ -15,12 +16,7 @@ async def health_check():
 
 
 @router.get("/db_check")
-async def db_check():
+async def db_check(db: AsyncSession = Depends(get_db)):
     """Проверка подключения к базе данных."""
-    try:
-        conn = await asyncpg.connect(settings.database_url)
-        result = await conn.fetchval("SELECT 1")
-        await conn.close()
-        return {"result": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = await db.execute(text("SELECT 1"))
+    return {"result": result.scalar_one()}
