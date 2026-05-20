@@ -2,7 +2,7 @@
 
 import asyncio
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -60,27 +60,33 @@ async def get_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/{task_id}")
 async def update_task(
-    task_id: int, 
-    task_data: TaskUpdate, 
+    task_id: int,
+    task_data: TaskUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    """Обновить задачу по id с проверкой версии (оптимистичная блокировка)."""
-    result = await db.execute(select(Task).where(Task.id == task_id))
-    task = result.scalar_one_or_none()
+    """Обновить задачу с атомарной проверкой версии (optimistic lock)."""
+    values_to_update = {"version": Task.version + 1}   # увеличиваем версию
 
-    if not task:
-        raise NotFoundError("Task not found")
-    
-    if task.version != task_data.version:
-        raise ConflictError("Version conflict")
-    
     if task_data.title is not None:
-        task.title = task_data.title
+        values_to_update["title"] = task_data.title
     if task_data.status is not None:
-        task.status = task_data.status
-    
-    task.version += 1
+        values_to_update["status"] = task_data.status
+
+    stmt = (
+        update(Task)
+        .where(
+            Task.id == task_id,
+            Task.version == task_data.version
+        )
+        .values(**values_to_update)
+        .returning(Task)
+    )
+    result = await db.execute(stmt)
+    updated = result.scalar_one_or_none()
+
+    # если версия изменилась, то конфликт
+    if not updated:
+        raise ConflictError("Version conflict")
 
     await db.commit()
-    await db.refresh(task)
-    return task
+    return updated
