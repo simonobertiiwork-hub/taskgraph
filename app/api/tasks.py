@@ -2,7 +2,7 @@
 
 import asyncio
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
@@ -33,8 +33,8 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 
 @router.get("/slow")
 async def get_tasks_slow(db: AsyncSession = Depends(get_db)):
-    """Вернуть все задачи с искусственной задержкой (демонстрация async)."""
-    await asyncio.sleep(3)
+    """Вернуть все задачи с задержкой на уровне БД (удерживает соединение)."""
+    await db.execute(text("SELECT pg_sleep(2)"))  # БД ждёт 2 секунды
     result = await db.execute(select(Task))
     tasks = result.scalars().all()
     return tasks
