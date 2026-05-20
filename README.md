@@ -112,7 +112,7 @@ Demonstration of:
 - cyclic dependencies (A → B → C → A)
 - infinite recursive queries
 - `pg_stat_activity` diagnostics
-- cycle prevention: validation + depth limit (`max_depth=10`)
+- cycle prevention: validation + depth limit (`max_depth=20`)
 
 ---
 
@@ -152,6 +152,28 @@ Apply migrations:
 ```bash
 docker compose run --rm app alembic upgrade head
 ```
+
+⚠️ Important: Alembic Migration Bootstrap
+If you need to recreate the tasks table migration from scratch, deleting the volume is the last resort.
+
+First, check current migration status:
+
+```bash
+docker compose run --rm app alembic current
+docker compose run --rm app alembic history
+```
+
+Only if the bootstrap migration is broken, proceed with volume removal:
+
+```bash
+docker compose down
+docker volume rm taskgraph_postgres_data   # ⚠️ This deletes ALL database data!
+docker compose up -d
+docker compose run --rm app alembic revision --autogenerate -m "bootstrap tasks table"
+docker compose run --rm app alembic upgrade head
+```
+
+⚠️ Warning: This will delete all existing data in the database. Use only when absolutely necessary.
 
 ## Load Testing
 
