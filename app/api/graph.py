@@ -118,6 +118,7 @@ async def walk_graph(
         )
         SELECT id, name, depth
         FROM graph_tree
+        ORDER BY depth
     """)
     result = await db.execute(query, {"node_id": node_id, "max_depth": max_depth})
     rows = result.mappings().all()
