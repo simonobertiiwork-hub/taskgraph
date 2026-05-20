@@ -1,36 +1,29 @@
-# Кейс №4: Тяжёлые запросы
+# Case #4: Heavy Queries
 
-## Проблема
+## Problem
 
-Один неоптимизированный запрос способен деградировать производительность всей системы.
+One expensive query can affect the entire system.
 
-## Демонстрация
+## Reproduction
 
-- `GET /tasks/heavy` - сортировка по random() (индекс не помогает)
-- `GET /tasks` - лёгкий вопрос
+Heavy endpoint: GET /tasks/heavy
+Light endpoint: GET /tasks
 
-**Тест:** 1 тяжёлый запрос + 5 лёгких параллельно.
+Test: 1 heavy request + 5 lightweight requests, parallel execution.
 
-## Результат
+## Investigation
 
-| Тип запроса | Обычное время | Под нагрузкой |
-|-------------|---------------|---------------|
-| Лёгкий      | 5-20 мс       | 6-9 c         |
-| Тяжёлый     | 2-4 с         | 8.9 c         |
+Light requests: 5–20 ms → 6–9 s
+Heavy request: 2–4 s → 8.9 s
 
-Лёгкие запросы замедлились в **сотни раз**.
+## Solution
 
+- optimize queries
+- cache results
+- move expensive work to background processing
 
-## Причина
+## Lessons Learned
 
-Тяжёлый запрос загружает CPU/IO PostgreSQL и удерживает соединение из пула. Другие запросы ждут освобождение ресурсов.
+Heavy database operations affect unrelated endpoints.
 
-## Решение
-
-- Оптимизировать запросы (индексы)
-- Кэшировать результаты
-- Выносить тяжёлые операции в фон
-
-## Вывод
-
-Один тяжёлый запрос может деградировать всю систему. Async не решает проблему долгих запросов (если БД занята, остальные ждут).
+Async does not solve database contention.

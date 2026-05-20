@@ -1,35 +1,41 @@
-# Кейс №1: Race condition
+# Case #1: Race Condition
 
-## Проблема
+## Problem
 
-Два клиента одновременно (конкурентно) обновляют одну задачу → происходит потеря данных.
+Concurrent updates can overwrite data.
 
-## Без защиты
+Two clients update the same task simultaneously.
 
-PATCH /tasks/1 {"title": "A"} → 200
-PATCH /tasks/1 {"title": "B"} → 200
+Without protection:
 
-→ последнее обновление перезаписывает предыдущее
+PATCH /tasks/1 {"title":"A"} → 200
+PATCH /tasks/1 {"title":"B"} → 200
 
-## Решения
+Last write silently overwrites previous data.
 
-1. Last write wins - ❌ теряются данные
-2. Pessimistic lock - ❌ блокировки
-3. Optimistic lock (version) ✅
+## Alternatives
 
-## Демонстрация
+1. Last write wins ❌
+2. Pessimistic lock ❌
+3. Optimistic lock (version field) ✅
 
-POST /tasks → {"id": 1, "version": 1}
+## Solution
 
-PATCH /tasks/1 {"title": "A", "version": 1} → 200 (version=2)
-PATCH /tasks/1 {"title": "B", "version": 1} → 409
+Version-based optimistic locking.
 
-## Результат
+Atomic update validates version before commit.
 
-- первое обновление применилось
-- второе получило 409
-- данные не потеряны
+Conflict → 409 Conflict
 
-## Вывод
+## Result
 
-Optimistic locking предотвращает потерю данных при конкурентных обновлениях без использования блокировок.
+PATCH /tasks/1 {"version":1} → 200
+PATCH /tasks/1 {"version":1} → 409
+
+- no silent overwrite
+- no row locking
+- controlled concurrent updates
+
+## Lessons Learned
+
+Optimistic locking prevents data loss without blocking reads.

@@ -1,61 +1,31 @@
-# Кейс №3: Connection Pool
+# Case #3: Connection Pool Saturation
 
-## Проблема
+## Problem
 
-При росте параллельных запросов система упирается в ограниченный пул соединений.
-Асинхронность сама по себе не даёт бесконечной пропускной способности.
+Async does not remove database bottlenecks.
 
-## Решение
+Connection pool limits affect throughput.
 
-Настроен асинхронный движок с жёсткими лимитами пула:
+Configuration: pool_size=5, max_overflow=0
 
-- `pool_size=5`
-- `max_overflow=0`
+Endpoint: GET /tasks/slow
 
-Эндпоинт: `GET /tasks/slow` (искусственная задержка 2 секунды)
+## Investigation
 
-**VU (Virtual User)** — одна параллельная задача, имитирующая одного реального пользователя.
+10 VUs → p95 ≈ 3.0 s, 0 errors
+100 VUs → p95 ≈ 3.3 s, 0 errors
+1000 VUs → 14.5% errors, p95 ≈ 4.1 s
 
----
+Measured via: k6
 
-## Сценарий 1
+## Result
 
-Нагрузка: **10 VUs (низкая нагрузка)**, 10 секунд
+Low and medium load remained stable.
 
-### Результат
+Extreme concurrency caused failures and latency growth.
 
-→ 0 ошибок
-→ p95 ≈ 3.0 c
-→ система стабильна
+## Lessons Learned
 
----
+Async improves concurrency.
 
-## Сценарий 2
-
-Нагрузка: **100 VUs (средняя нагрузка)**, 10 секунд
-
-### Результат
-
-→ 0 ошибок
-→ p95 ≈ 3.3 с
-→ пул держит нагрузку
-
----
-
-## Сценарий 3
-
-Нагрузка: **1000 VUs (высокая нагрузка)**, 10 секунд
-
-### Результат
-
-→ 14.5 % ошибок
-→ p95 успешных запросов ≈ 4.1 с
-→ часть запросов не проходит из-за сетевых ограничений
-
----
-
-## Вывод
-
-- При 10 и 100 VUs система стабильна, пула из 5 соединений хватает.
-- При резком скачке до 1000 VUs возникают сетевые отказы, а успешные запросы замедляются.
-- Асинхронность сама по себе не решает проблему ограниченного пула соединений.
+It does not remove database limits.

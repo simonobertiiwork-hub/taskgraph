@@ -1,72 +1,37 @@
-# Кейс №5: Цикл в графе
+# Case #5: Recursive Graph Incident
 
-## Проблема
+## Problem
 
-Циклическая зависимость в графе приводит к бесконечному рекурсивному обходу.
-Система перестаёт отвечать, PostgreSQL начинает потреблять ресурсы.
+Graph cycles can trigger infinite recursive traversal.
 
-## Решение
+Example: A → B → C → A
 
-- Добавлена проверка перед созданием ребра (запрет циклов)
-- Рекурсивный обход ограничен глубиной (`max_depth=10`)
+## Investigation
 
-Эндпоинты:
-- `POST /graph/edges` - создание связей
-- `GET /graph/walk/{node_id}` - рекурсивный обход
+Recursive CTE traversal.
 
----
+Cycle causes:
 
-## Сценарий 1 (нормальный граф)
+- resource growth
+- blocked execution
+- database degradation
 
-Граф `A → B → C` (без цикла)
+Diagnostics: pg_stat_activity
 
-### Результат
+## Solution
 
-→ рекурсивный обход от A возвращает 3 строки (A, B, C)
-→ время выполнения: ~2 ms
-→ система стабильна
+Protection added:
 
----
+- cycle validation
+- visited path
+- depth limit
 
-## Сценарий 2 (цикл без защиты)
+## Result
 
-Добавлена связь `C → A` (цикл `A → B → C → A`)
+Recursive traversal remains stable.
 
-### Результат
+Infinite recursion prevented.
 
-→ рекурсивный запрос уходит в бесконечность
-→ запрос зависает (не завершается)
-→ PostgreSQL удерживает ресурсы
+## Lessons Learned
 
-### Диагностика
-
-Проблемный запрос найден через `pg_stat_activity`:
-
-```sql
-SELECT pid, state, query
-FROM pg_stat_activity
-WHERE state != 'idle';
-```
-
-Остановлен через `pg_terminate_backend(<pid>)`.
-
----
-
-## Сценарий 3 (защита)
-
-Запрет создания цикла
-
-### Результат
-
-→ рекурсивный обход от A возвращает 10 строк (A, B, C, A, B, C, A, B, C, A)
-→ время выполнения: ~0.8 ms
-→ система не зависает
-
-## Вывод
-
-Даже одна циклическая связь способна деградировать всю систему.
-
-Защита должна быть на уровне приложения (проверка перед вставкой) и на уровне исполнения
-(ограничение глубины).
-
-`pg_stat_activity` - обязательный инструмент для диагностики подобных инцидентов.
+Cycle protection should exist both before insert and during execution.

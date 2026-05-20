@@ -1,141 +1,43 @@
-# Кейс №2: Индексы
+# Case #2: PostgreSQL Performance
 
-## Проблема
+## Problem
 
-Поиск по полю `title` без индекса выполняется медленно → используется полный скан таблицы.
+Queries without indexes degrade as dataset grows.
 
-## Решение
+## Investigation
 
-Для ускорения запросов используются индексы:
+Dataset: 2k rows
 
-- `idx_tasks_title` для поиска по полю `title`
-- `idx_tasks_status` для фильтрации по полю `status`
+Seq Scan: ~0.34 ms
+Index Scan: ~0.13 ms
 
----
+Dataset: 20k rows
 
-## Сценарий 1
+Seq Scan: ~2.27 ms
+Index Scan: ~0.07 ms
 
-Данные: ~2к строк в таблице `tasks`
-Индекс: `idx_tasks_title`
+Dataset: 200k rows
 
-### Без индекса
+Seq Scan: ~13.94 ms
+Index Scan: ~0.04 ms
 
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE title = 'task 1500';
+Additional investigation:
 
-→ Seq Scan
-→ ~0.343 ms
+Low selectivity → Seq Scan
+High selectivity → Index Scan
 
-### Добавляем индекс
+Measured via: EXPLAIN ANALYZE
 
-CREATE INDEX idx_tasks_title ON tasks(title);
+## Solution
 
-### С индексом
+Indexes: idx_tasks_title, idx_tasks_status
 
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE title = 'task 1500';
+## Result
 
-→ Index Scan
-→ ~0.136 ms
+13.9 ms → 0.04 ms
 
-### Результат
+## Lessons Learned
 
-- Seq Scan заменился на Index Scan
-- время выполнения уменьшилось
+Indexes improve performance.
 
----
-
-## Сценарий 2
-
-Данные: ~20к строк в таблице `tasks`
-Индекс: `idx_tasks_title`
-
-### Без индекса
-
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE title = 'task 15000';
-
-→ Seq Scan
-→ ~2.276 ms
-
-### С индексом
-
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE title = 'task 15000';
-
-→ Index Scan
-→ ~0.073 ms
-
-### Результат
-
-- при увеличении объёма данных разница становится значительно больше
-- индекс даёт ощутимый прирост производительности
-
----
-
-## Сценарий 3
-
-Данные: ~20к строк в таблице `tasks`
-Индекс: `idx_tasks_status`
-
-Поле `status`:
-- большинство строк: 'new'
-- небольшая часть: 'done'
-
-### Добавляем индекс
-
-CREATE INDEX idx_tasks_status ON tasks(status);
-
-### Низкая селективность
-
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE status = 'new';
-
-→ Seq Scan
-→ ~5.25 ms
-
-### Высокая селективность
-
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE status = 'done';
-
-→ Index Scan
-→ ~0.098 ms
-
-### Результат
-
-- индекс не используется, если подходит большинство строк
-- индекс используется, если подходит небольшое количество строк
-
----
-
-## Дополнительно
-
-Проверено на ~200к строк в таблице `tasks`
-Индекс: `idx_tasks_title`
-
-### Без индекса
-
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE title = 'task 150000';
-
-→ Seq Scan
-→ ~13.942 ms
-
-### С индексом
-
-EXPLAIN ANALYZE SELECT * FROM tasks WHERE title = 'task 150000';
-
-→ Index Scan
-→ ~0.046 ms
-
-### Результат
-
-Поведение сохраняется: при высокой селективности используется индекс, при низкой - нет.
-
----
-
-## Вывод
-
-Индекс ускоряет запросы, особенно когда данных становится больше.
-
-Но он не всегда используется.
-
-Если подходит много строк, PostgreSQL делает Seq Scan.
-
-Если строк мало, используется Index Scan.
-
-Всё зависит от данных и самого запроса.
+But PostgreSQL chooses plans based on data distribution and selectivity.
