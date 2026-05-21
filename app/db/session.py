@@ -10,7 +10,7 @@ from app.core.config import settings
 # создаём асинхронный движок с ограничением пула соединений
 engine = create_async_engine(
     settings.database_url,
-    echo=True,          # SQL-логи (полезно для отладки)
+    echo=False,         # SQL-логи (включать только для отладки)
     pool_size=5,        # сколько соединений держать открытыми
     max_overflow=0,     # сколько дополнительных можно открыть при пике
 )
