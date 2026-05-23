@@ -26,4 +26,4 @@ Heavy request: 2–4 s → 8.9 s
 
 Heavy database operations affect unrelated endpoints.
 
-Async does not solve database contention.
+Async does not remove database bottlenecks.

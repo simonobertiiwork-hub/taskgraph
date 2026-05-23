@@ -25,7 +25,7 @@ Version-based optimistic locking.
 
 Atomic update validates version before commit.
 
-Conflict → 409 Conflict
+Conflict detected → 409 Conflict
 
 ## Result
 

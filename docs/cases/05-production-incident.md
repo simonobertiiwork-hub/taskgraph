@@ -25,6 +25,7 @@ Protection added:
 - cycle validation
 - visited path
 - depth limit
+- stable traversal ordering
 
 ## Result
 

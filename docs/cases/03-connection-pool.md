@@ -28,4 +28,6 @@ Extreme concurrency caused failures and latency growth.
 
 Async improves concurrency.
 
-It does not remove database limits.
+It does not remove database bottlenecks.
+
+Database limits remain the system constraint.

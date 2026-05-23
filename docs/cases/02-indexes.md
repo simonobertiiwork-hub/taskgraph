@@ -40,4 +40,5 @@ Indexes: idx_tasks_title, idx_tasks_status
 
 Indexes improve performance.
 
-But PostgreSQL chooses plans based on data distribution and selectivity.
+Execution plans depend on selectivity and data distribution.
+Indexes are not always used automatically.
