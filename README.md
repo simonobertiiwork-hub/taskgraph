@@ -8,7 +8,7 @@ Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg �
 
 ## Goal
 
-TaskGraph reproduces production-like backend scenarios to analyze:
+TaskGraph reproduces production-like backend scenarios to investigate:
 
 - system behavior
 - performance bottlenecks
@@ -16,14 +16,9 @@ TaskGraph reproduces production-like backend scenarios to analyze:
 - concurrency issues
 - failure patterns
 
-Scenarios covered:
+Project philosophy:
 
-- race conditions
-- PostgreSQL query optimization
-- connection pool saturation
-- heavy query impact
-- recursive graph traversal
-- graph cycle prevention
+Reproduce → Measure → Understand → Fix → Verify
 
 ---
 
@@ -42,15 +37,16 @@ Result:
 
 ### 2. PostgreSQL Performance
 
-Investigation:
-
-- Seq Scan vs Index Scan
-- selectivity behavior
-- EXPLAIN ANALYZE
+Seq Scan vs Index Scan.
 
 Result:
 
 13.9 ms → 0.04 ms
+
+Investigation:
+
+- selectivity
+- EXPLAIN ANALYZE
 
 ---
 
@@ -63,24 +59,22 @@ pool_size=5
 max_overflow=0
 ```
 
-Investigation:
+Load testing:
 
-- connection bottlenecks
-- latency growth
-- concurrent load via k6
+- k6
+- Prometheus
+- Grafana
+- p95
 
 Key finding:
 
-> async != infinite parallelism
+async != infinite parallelism
 
 ---
 
 ### 4. Heavy Queries
 
-Investigation:
-
-- latency amplification
-- slow SQL impact on lightweight endpoints
+Heavy SQL affects lightweight requests.
 
 Result:
 
@@ -90,38 +84,24 @@ Result:
 
 ### 5. Recursive Graph Incident
 
-Investigation:
-
-- recursive CTE
-- cyclic dependencies (A → B → C → A)
-- recursive traversal degradation
+Recursive CTE.
 
 Protection:
 
 - cycle validation
-- visited path
 - depth limit
+- visited path
 
 ---
 
 ## Testing
 
-Pytest:
-
-- `test_tasks.py`
-- `test_graph.py`
-- `test_security.py`
+Pytest
 
 Performance:
 
-- `k6.js`
-- `k6-stages.js`
-- `k6-multi.js`
-
-Manual investigation:
-
-- `test_pool.py`
-- `test_heavy.py`
+- k6
+- k6-multi.js
 
 Run:
 
@@ -153,40 +133,10 @@ Prometheus / Grafana
 docker compose up -d --build
 ```
 
-API:
-
-```text
-http://localhost:8000
-```
-
 Swagger:
 
 ```text
 http://localhost:8000/docs
-```
-
----
-
-## Load Testing
-
-```bash
-k6 run k6.js
-```
-
----
-
-## Migrations
-
-Create:
-
-```bash
-alembic revision --autogenerate -m "message"
-```
-
-Apply:
-
-```bash
-alembic upgrade head
 ```
 
 ---
@@ -198,9 +148,3 @@ Detailed case documentation:
 ```text
 docs/cases/
 ```
-
----
-
-## Project Philosophy
-
-Reproduce → Measure → Understand → Fix → Verify
