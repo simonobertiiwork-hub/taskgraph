@@ -2,32 +2,72 @@
 
 ## Problem
 
-Async does not remove database bottlenecks.
+Async improves concurrency.
 
-Connection pool limits affect throughput.
+It does not remove database bottlenecks.
 
-Configuration: pool_size=5, max_overflow=0
+Configuration:
 
-Endpoint: GET /tasks/slow
+pool_size=5
+max_overflow=0
+
+Endpoint:
+
+GET /tasks/slow
 
 ## Investigation
 
-10 VUs → p95 ≈ 3.0 s, 0 errors
-100 VUs → p95 ≈ 3.3 s, 0 errors
-1000 VUs → 14.5% errors, p95 ≈ 4.1 s
+Load test via k6:
 
-Measured via: k6
+5 VUs
+p95 ≈ 3s
+0 errors
+
+50 VUs
+p95 ≈ 3.3s
+0 errors
+
+500 VUs
+p95 ≈ 35s
+≈76% request failures
+472 interrupted iterations
+
+Connection pool saturation observed.
+
+## Fix
+
+Before:
+
+pool_size=5
+max_overflow=0
+
+After:
+
+pool_size=20
+max_overflow=20
+
+Retested with same k6 scenario.
 
 ## Result
 
-Low and medium load remained stable.
+p95:
 
-Extreme concurrency caused failures and latency growth.
+35s → 29s
+
+Request failures:
+
+76% → 0%
+
+Connection pool stopped being the main bottleneck.
+
+High concurrency still causes degradation.
 
 ## Lessons Learned
 
 Async improves concurrency.
 
-It does not remove database bottlenecks.
+Database limits still matter.
 
-Database limits remain the system constraint.
+Increasing pool size reduces saturation.
+
+Database constraints remain bottlenecks under high concurrency.
