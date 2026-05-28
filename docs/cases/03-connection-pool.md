@@ -1,73 +1,56 @@
-# Case #3: Connection Pool Saturation
+# Case #3: Connection Pool Exhaustion
 
 ## Problem
 
-Async improves concurrency.
+Database connection pool became saturated under load.
 
-It does not remove database bottlenecks.
-
-Configuration:
-
+Initial config:
 pool_size=5
 max_overflow=0
 
 Endpoint:
-
 GET /tasks/slow
 
 ## Investigation
 
-Load test via k6:
+k6 load test:
 
-5 VUs
-p95 ≈ 3s
-0 errors
+5 VUs:
+- p95 ≈ 3s
+- 0 failures
 
-50 VUs
-p95 ≈ 3.3s
-0 errors
+50 VUs:
+- p95 ≈ 3.3s
+- 0 failures
 
-500 VUs
-p95 ≈ 35s
-≈76% request failures
-472 interrupted iterations
+500 VUs:
+- p95 ≈ 35s
+- ~76% failures
 
-Connection pool saturation observed.
+Connection pool exhaustion reproduced.
 
-## Fix
+## Solution
 
 Before:
-
 pool_size=5
 max_overflow=0
 
 After:
-
 pool_size=20
 max_overflow=20
 
-Retested with same k6 scenario.
+Repeated the same load test.
 
 ## Result
 
-p95:
+- connection failures disappeared
+- pool saturation stopped being primary bottleneck
+- p95 improved: 35s → 29s
 
-35s → 29s
-
-Request failures:
-
-76% → 0%
-
-Connection pool stopped being the main bottleneck.
-
-High concurrency still causes degradation.
+High latency under heavy load still remained.
 
 ## Lessons Learned
 
-Async improves concurrency.
-
-Database limits still matter.
-
-Increasing pool size reduces saturation.
-
-Database constraints remain bottlenecks under high concurrency.
+- Async does not remove DB bottlenecks.
+- Pool configuration affects stability and latency.
+- Removing one bottleneck exposes the next limitation.

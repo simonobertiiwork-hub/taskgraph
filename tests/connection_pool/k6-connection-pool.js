@@ -8,9 +8,9 @@ export const options = {
             startVUs: 0,
 
             stages: [
-                {duration: '10s', target: 5},  // лёгкая нагрузка
-                {duration: '10s', target: 50},  // средняя нагрузка
-                {duration: '10s', target: 500},  // высокая нагрузка
+                {duration: '2s', target: 10},  // лёгкая нагрузка
+                {duration: '2s', target: 50},  // средняя нагрузка
+                {duration: '2s', target: 150},  // высокая нагрузка
             ],
 
             gracefulRampDown: '0s',

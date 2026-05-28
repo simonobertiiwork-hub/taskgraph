@@ -18,7 +18,7 @@ Use:
 ## Why
 - single async model
 - good FastAPI integration
-- fits I/O-bound workloads
+- efficient handling of concurrent I/O
 
 ## Tradeoff
 - async required across repositories and services

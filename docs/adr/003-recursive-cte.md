@@ -6,7 +6,6 @@ Need graph traversal with cycle protection.
 ## Decision
 Use:
 - recursive CTE
-- visited path
 - depth limit
 
 ## Alternatives

@@ -46,8 +46,12 @@ async def get_tasks_slow(
 @router.get("/heavy")
 async def get_tasks_heavy(db: AsyncSession = Depends(get_db)):
     """Тяжёлый запрос: сортировка по случайному числу (без индекса)."""
-    result = await db.execute(select(Task).order_by(func.random()))
-    tasks = result.scalars().all()
+    result = await db.execute(
+        select(Task.id, Task.title)
+        .order_by(func.random())
+        .limit(1000)
+    )
+    tasks = result.all()
     return tasks
 
 

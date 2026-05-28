@@ -19,4 +19,4 @@ Use:
 - explicit conflict handling
 
 ## Tradeoff
-- client handles 409 Conflict
+- client retries with fresh version
