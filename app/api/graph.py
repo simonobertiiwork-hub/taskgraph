@@ -41,6 +41,11 @@ async def create_graph_edge(
     Создать ребро графа с проверкой на цикл.
     Запрещаем создание циклических зависимостей.
     """
+    if edge_data.parent_id == edge_data.child_id:
+        raise ValidationError(
+            "Self-loop is not allowed"
+        )
+
     # проверяем, можно ли из child_id дойти до parent_id
     cycle_check_query = text("""
         WITH RECURSIVE path AS (

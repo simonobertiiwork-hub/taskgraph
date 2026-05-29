@@ -1,17 +1,24 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy.sql import func
+
 from app.db.base import Base
 
 class Task(Base):
     __tablename__ = "tasks"
 
-    # id задачи, автоинкремент (заполняется автоматически)
     id = Column(Integer, primary_key=True, index=True)
-
-    # название задачи (обязательное)
     title = Column(Text, nullable=False)
-
-    # статус задачи (new / in_progress / done)
     status = Column(String, nullable=False, default="new")
-
-    # версия задачи для optimistic lock (защита от race conditions)
     version = Column(Integer, nullable=False, default=1)
+
+    created_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    updated_at = Column(
+        DateTime,
+        nullable=False,
+        server_default=func.now(),
+    )

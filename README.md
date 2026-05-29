@@ -9,7 +9,6 @@ Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg �
 ## Goal
 
 TaskGraph reproduces production-like backend scenarios to investigate:
-
 - system behavior
 - performance bottlenecks
 - latency degradation
@@ -17,80 +16,105 @@ TaskGraph reproduces production-like backend scenarios to investigate:
 - failure patterns
 
 Project philosophy:
-
 Reproduce → Measure → Understand → Fix → Verify
 
 ---
 
 ## Cases
 
-### 1. Race Condition
-
-Optimistic locking via version field.
-
-Result:
-
-- concurrent updates → 409 Conflict
-- prevents silent data loss
-
----
-
-### 2. PostgreSQL Performance
+1. PostgreSQL Performance
 
 Seq Scan vs Index Scan.
 
 Result:
-
-13.9 ms → 0.04 ms
+13.9 ms → 0.07 ms
 
 Investigation:
-
 - selectivity
 - EXPLAIN ANALYZE
 
 ---
 
-### 3. Connection Pool Saturation
+2. Race Condition
 
-Configuration:
+Lost Update reproduction.
 
-```text
+Implemented:
+- Last Write Wins
+- Pessimistic Locking
+- Optimistic Locking
+
+Result:
+- concurrent updates → 409 Conflict
+- prevents silent data loss
+
+---
+
+3. Connection Pool Exhaustion
+
+Before:
 pool_size=5
 max_overflow=0
-```
+
+After:
+pool_size=20
+max_overflow=20
 
 Load testing:
-
 - k6
 - Prometheus
 - Grafana
-- p95
+
+Result:
+p95: 35s → 29s
+
+failures: 76% → 0%
 
 Key finding:
-
 async != infinite parallelism
 
 ---
 
-### 4. Heavy Queries
+4. Recursive Graph Traversal
 
-Heavy SQL affects lightweight requests.
+Recursive CTE traversal.
+
+Protection:
+- depth limit
 
 Result:
-
-5–20 ms → 1.5–8.9 s
+11 ms → 0.2 ms
 
 ---
 
-### 5. Recursive Graph Incident
+Additional Investigation: Heavy Queries
 
-Recursive CTE.
+Heavy SQL affects lightweight requests.
 
-Protection:
+Observed:
+5–20 ms → several seconds
 
-- cycle validation
-- depth limit
-- visited path
+Status:
+Research completed.
+
+The issue was partially reproduced but excluded from the final live demonstration because a stable production-style reproduction was not achieved.
+
+---
+
+## Monitoring
+
+TaskGraph includes:
+
+- Prometheus
+- Grafana
+- custom FastAPI metrics
+- k6 load testing
+
+Used for:
+
+- request count
+- latency visualization
+- load investigation
 
 ---
 
@@ -99,21 +123,16 @@ Protection:
 Pytest
 
 Performance:
-
-- k6
-- k6-multi.js
+- k6 load testing
+- connection pool investigation
 
 Run:
-
-```bash
 docker compose run --rm app pytest tests/ -v
-```
 
 ---
 
 ## Architecture
 
-```text
 FastAPI
    ↓
 API Layer
@@ -123,28 +142,31 @@ SQLAlchemy Async
 PostgreSQL
    ↓
 Prometheus / Grafana
-```
 
 ---
 
 ## Run
 
-```bash
 docker compose up -d --build
-```
 
 Swagger:
-
-```text
 http://localhost:8000/docs
-```
+
+Prometheus:
+http://localhost:9090
+
+Grafana:
+http://localhost:3000
 
 ---
 
 ## Documentation
 
 Detailed case documentation:
-
-```text
 docs/cases/
-```
+
+Architecture decisions:
+docs/adr/
+
+Research materials:
+research/
