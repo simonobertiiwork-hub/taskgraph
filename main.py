@@ -20,7 +20,33 @@ register_exception_handlers(app)
 # ========== METRICS ==========
 
 REQUESTS = Counter("http_requests_total", "Total requests", ["method", "endpoint"])
-LATENCY = Histogram("http_request_duration_seconds", "Request latency", ["method", "endpoint"])
+LATENCY = Histogram(
+    "http_request_duration_seconds",
+    "Request latency",
+    ["method", "endpoint"],
+    buckets=(
+        0.005,
+        0.01,
+        0.025,
+        0.05,
+        0.075,
+        0.1,
+        0.25,
+        0.5,
+        0.75,
+        1,
+        2.5,
+        5,
+        7.5,
+        10,
+        15,
+        20,
+        30,
+        40,
+        50,
+        60,
+    ),
+)
 
 
 @app.middleware("http")

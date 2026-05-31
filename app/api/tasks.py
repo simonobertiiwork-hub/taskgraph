@@ -1,6 +1,7 @@
 """Роутер для задач (tasks)."""
 
 import asyncio
+import random
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, update, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,10 +35,16 @@ async def create_task(task_data: TaskCreate, db: AsyncSession = Depends(get_db))
 @router.get("/slow")
 async def get_tasks_slow(
     db: AsyncSession = Depends(get_db),
-    delay: int = Query(2, ge=0, le=10),
 ):
     """Вернуть все задачи с задержкой на уровне БД (удерживает соединение)."""
-    await db.execute(text("SELECT pg_sleep(:delay)"), {"delay": delay})
+
+    delay = random.randint(1, 10)
+
+    await db.execute(
+        text("SELECT pg_sleep(:delay)"), 
+        {"delay": delay}
+    )
+
     result = await db.execute(select(Task))
     tasks = result.scalars().all()
     return tasks

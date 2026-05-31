@@ -8,9 +8,9 @@ export const options = {
             startVUs: 0,
 
             stages: [
-                {duration: '30s', target: 10},  // лёгкая нагрузка
-                {duration: '30s', target: 50},  // средняя нагрузка
-                {duration: '30s', target: 150},  // высокая нагрузка
+                { duration: '10s', target: 10 },   // лёгкая нагрузка
+                { duration: '10s', target: 50 },   // средняя нагрузка
+                { duration: '10s', target: 150 },  // высокая нагрузка
             ],
 
             gracefulRampDown: '0s',
@@ -19,5 +19,10 @@ export const options = {
 };
 
 export default function () {
-    http.get('http://localhost:8000/tasks/slow?delay=5');
+    // случайная задержка от 3 до 10 секунд
+    const delay = Math.floor(Math.random() * 8) + 3;
+
+    http.get(
+        `http://localhost:8000/tasks/slow?delay=${delay}`
+    );
 }

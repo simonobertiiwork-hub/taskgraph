@@ -35,22 +35,7 @@ Investigation:
 
 ---
 
-2. Race Condition
-
-Lost Update reproduction.
-
-Implemented:
-- Last Write Wins
-- Pessimistic Locking
-- Optimistic Locking
-
-Result:
-- concurrent updates → 409 Conflict
-- prevents silent data loss
-
----
-
-3. Connection Pool Exhaustion
+2. Connection Pool Exhaustion
 
 Before:
 pool_size=5
@@ -72,6 +57,21 @@ failures: 76% → 0%
 
 Key finding:
 async != infinite parallelism
+
+---
+
+3. Race Condition
+
+Lost Update reproduction.
+
+Implemented:
+- Last Write Wins
+- Pessimistic Locking
+- Optimistic Locking
+
+Result:
+- concurrent updates → 409 Conflict
+- prevents silent data loss
 
 ---
 

@@ -1,4 +1,4 @@
-# Case #3: Connection Pool Exhaustion
+# Case #2: Connection Pool Exhaustion
 
 ## Problem
 

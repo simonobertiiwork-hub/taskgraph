@@ -1,4 +1,4 @@
-# Case #2: Race Condition
+# Case #3: Race Condition
 
 ## Problem
 
