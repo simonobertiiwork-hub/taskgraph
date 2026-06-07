@@ -1,6 +1,7 @@
 """Роутер для задач (tasks)."""
 
 import asyncio
+import time
 import random
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, update, text
@@ -20,6 +21,35 @@ async def get_tasks(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Task))
     tasks = result.scalars().all()
     return tasks
+
+
+@router.get("/stats")
+async def get_tasks_stats(
+    db: AsyncSession = Depends(get_db)
+):
+    """Вернуть статистику задач для Redis Cache Case."""
+    start = time.perf_counter()
+
+    result = await db.execute(
+        select(
+            Task.status,
+            func.count(Task.id)
+        )
+        .group_by(Task.status)
+    )
+
+    stats = result.all()
+
+    duration_ms = round((time.perf_counter() - start) * 1000, 3)
+
+    return {
+        "source": "postgres",
+        "cache": "miss",
+        "duration_ms": duration_ms,
+        "stats": {
+            status: count for status, count in stats
+        }
+    }
 
 
 @router.post("")
@@ -60,6 +90,39 @@ async def get_tasks_heavy(db: AsyncSession = Depends(get_db)):
     )
     tasks = result.all()
     return tasks
+
+
+@router.post("/prepare-statuses")
+async def prepare_task_statuses(db: AsyncSession = Depends(get_db)):
+    """Подготовить тестовые данные для Redis Cache Case."""
+    await db.execute(
+        update(Task)
+        .where(Task.id <= 300)
+        .values(status="new")
+    )
+
+    await db.execute(
+        update(Task)
+        .where(Task.id > 300, Task.id <= 700)
+        .values(status="in_progress")
+    )
+
+    await db.execute(
+        update(Task)
+        .where(Task.id > 700)
+        .values(status="done")
+    )
+
+    await db.commit()
+
+    return {
+        "message": "Task statuses prepared",
+        "distribution": {
+            "new": "id <= 300",
+            "in_progress": "301 <= id <= 700",
+            "done": "id > 700"
+        }
+    }
 
 
 @router.get("/{task_id}")
