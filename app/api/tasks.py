@@ -1,6 +1,7 @@
 """Роутер для задач (tasks)."""
 
 import asyncio
+import json
 import time
 import random
 from fastapi import APIRouter, Depends, Query
@@ -11,6 +12,9 @@ from app.db.session import get_db
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.core.exceptions import NotFoundError, ConflictError
+from app.core.redis import redis_client
+
+CACHE_TTL_SECONDS = 30
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -28,27 +32,54 @@ async def get_tasks_stats(
     db: AsyncSession = Depends(get_db)
 ):
     """Вернуть статистику задач для Redis Cache Case."""
+
+    cache_key = "tasks:stats"
+
     start = time.perf_counter()
+
+    cached = await redis_client.get(cache_key)
+
+    if cached:
+        duration_ms = round(
+            (time.perf_counter() - start) * 1000,
+            3
+        )
+
+        return {
+            "source": "redis",
+            "cache": "hit",
+            "duration_ms": duration_ms,
+            "stats": json.loads(cached)
+        }
 
     result = await db.execute(
         select(
             Task.status,
             func.count(Task.id)
-        )
-        .group_by(Task.status)
+        ).group_by(Task.status)
     )
 
-    stats = result.all()
+    stats = {
+        status: count
+        for status, count in result.all()
+    }
 
-    duration_ms = round((time.perf_counter() - start) * 1000, 3)
+    await redis_client.set(
+        cache_key,
+        json.dumps(stats),
+        ex=CACHE_TTL_SECONDS
+    )
+
+    duration_ms = round(
+        (time.perf_counter() - start) * 1000,
+        3
+    )
 
     return {
         "source": "postgres",
         "cache": "miss",
         "duration_ms": duration_ms,
-        "stats": {
-            status: count for status, count in stats
-        }
+        "stats": stats
     }
 
 
