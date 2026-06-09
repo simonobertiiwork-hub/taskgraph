@@ -4,7 +4,7 @@ Backend research project focused on reproducing and analyzing production-like ba
 
 ## Stack
 
-Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Docker Compose • k6 • Prometheus • Grafana
+Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Docker Compose • k6 • Prometheus • Grafana
 
 ## Goal
 
@@ -87,17 +87,34 @@ Result:
 
 ---
 
-Additional Investigation: Heavy Queries
+5. Redis Cache
 
-Heavy SQL affects lightweight requests.
+Cache Aside Pattern.
 
-Observed:
-5–20 ms → several seconds
+Implemented:
+- Redis cache
+- TTL expiration
+- cache hit / cache miss flow
 
-Status:
-Research completed.
+Result:
+- reduced PostgreSQL load
+- faster repeated requests
 
-The issue was partially reproduced but excluded from the final live demonstration because a stable production-style reproduction was not achieved.
+---
+
+6. Async Processing
+
+RabbitMQ + Celery integration.
+
+Implemented:
+- message broker
+- background workers
+- asynchronous task execution
+
+Result:
+- immediate HTTP response
+- background task processing
+- decoupled architecture
 
 ---
 
@@ -134,14 +151,11 @@ docker compose run --rm app pytest tests/ -v
 ## Architecture
 
 FastAPI
-   ↓
-API Layer
-   ↓
-SQLAlchemy Async
-   ↓
-PostgreSQL
-   ↓
-Prometheus / Grafana
+├─ PostgreSQL
+├─ Redis
+├─ RabbitMQ
+│   └─ Celery Worker
+└─ Prometheus / Grafana
 
 ---
 
