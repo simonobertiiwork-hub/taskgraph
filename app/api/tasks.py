@@ -12,7 +12,9 @@ from app.db.session import get_db
 from app.models.task import Task
 from app.schemas.task import TaskCreate, TaskUpdate
 from app.core.exceptions import NotFoundError, ConflictError
+from app.core.rabbitmq import publish_message
 from app.core.redis import redis_client
+from app.core.tasks import process_task
 
 CACHE_TTL_SECONDS = 30
 
@@ -202,3 +204,19 @@ async def update_task(
     await db.commit()
     await db.refresh(updated)
     return updated
+
+
+@router.post("/rabbit-test")
+async def rabbit_test():
+    publish_message("TaskGraph RabbitMQ test")
+    return {"status": "message sent"}
+
+
+@router.post("/celery-test")
+async def celery_test():
+    task = process_task.delay(123)
+
+    return {
+        "task_id": task.id,
+        "status": "submitted"
+    }
