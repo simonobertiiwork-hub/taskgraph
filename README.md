@@ -4,7 +4,7 @@ Backend research project focused on reproducing and analyzing production-like ba
 
 ## Stack
 
-Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Docker Compose • k6 • Prometheus • Grafana
+Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • k6 • Prometheus • Grafana
 
 ## Goal
 
@@ -118,17 +118,32 @@ Result:
 
 ---
 
+7. Event Streaming
+
+Apache Kafka integration.
+
+Implemented:
+- Kafka broker
+- Kafka UI
+- Producer
+- Topic-based event publishing
+
+Result:
+- events stored in Kafka topics
+- event-driven communication model
+- topic inspection through Kafka UI
+
+---
+
 ## Monitoring
 
 TaskGraph includes:
-
 - Prometheus
 - Grafana
 - custom FastAPI metrics
 - k6 load testing
 
 Used for:
-
 - request count
 - latency visualization
 - load investigation
@@ -150,12 +165,16 @@ docker compose run --rm app pytest tests/ -v
 
 ## Architecture
 
+```text
 FastAPI
 ├─ PostgreSQL
 ├─ Redis
 ├─ RabbitMQ
 │   └─ Celery Worker
+├─ Kafka
+│   └─ Kafka UI
 └─ Prometheus / Grafana
+```
 
 ---
 
@@ -165,6 +184,12 @@ docker compose up -d --build
 
 Swagger:
 http://localhost:8000/docs
+
+Kafka UI:
+http://localhost:8080
+
+RabbitMQ UI:
+http://localhost:15672
 
 Prometheus:
 http://localhost:9090
