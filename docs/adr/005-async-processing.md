@@ -7,7 +7,6 @@ Need background execution for long-running operations.
 ## Decision
 
 Use:
-
 - RabbitMQ broker
 - Celery workers
 - Task queue pattern

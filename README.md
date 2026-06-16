@@ -4,7 +4,7 @@ Backend research project focused on reproducing and analyzing production-like ba
 
 ## Stack
 
-Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • k6 • Prometheus • Grafana
+Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • Kubernetes • k6 • Prometheus • Grafana
 
 ## Goal
 
@@ -17,6 +17,20 @@ TaskGraph reproduces production-like backend scenarios to investigate:
 
 Project philosophy:
 Reproduce → Measure → Understand → Fix → Verify
+
+## Architecture
+
+```text
+FastAPI
+├─ PostgreSQL
+├─ Redis
+├─ RabbitMQ
+│   └─ Celery Worker
+├─ Kafka
+│   └─ Kafka UI
+├─ Prometheus / Grafana
+└─ Kubernetes Deployment
+```
 
 ---
 
@@ -135,6 +149,38 @@ Result:
 
 ---
 
+8. Kubernetes Deployment
+
+Local Kubernetes deployment.
+
+Implemented:
+- Namespace
+- Deployment
+- Service (NodePort)
+- Pod management
+- kubectl troubleshooting
+
+Investigated:
+- ErrImageNeverPull
+- Service routing
+- Endpoint registration
+
+Used:
+- kubectl describe
+- kubectl logs
+- kubectl get endpoints
+
+Result:
+- TaskGraph deployed inside Kubernetes
+- Pod started successfully
+- Service endpoint registered
+- HTTP requests reached application through ClusterIP
+
+Key finding:
+Deployment and Service should be validated independently.
+
+---
+
 ## Monitoring
 
 TaskGraph includes:
@@ -160,21 +206,6 @@ Performance:
 
 Run:
 docker compose run --rm app pytest tests/ -v
-
----
-
-## Architecture
-
-```text
-FastAPI
-├─ PostgreSQL
-├─ Redis
-├─ RabbitMQ
-│   └─ Celery Worker
-├─ Kafka
-│   └─ Kafka UI
-└─ Prometheus / Grafana
-```
 
 ---
 

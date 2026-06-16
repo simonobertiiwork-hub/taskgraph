@@ -9,12 +9,10 @@ Application logs alone are insufficient for latency analysis and load testing.
 ## Decision
 
 Use:
-
 - Prometheus
 - Grafana
 
 Collect:
-
 - Request count
 - Endpoint activity
 - P95 latency

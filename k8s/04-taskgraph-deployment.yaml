@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: taskgraph-app
+  namespace: taskgraph
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: taskgraph
+
+  template:
+    metadata:
+      labels:
+        app: taskgraph
+
+    spec:
+      containers:
+      - name: taskgraph
+
+        image: taskgraph-app:latest
+
+        imagePullPolicy: IfNotPresent
+
+        ports:
+        - containerPort: 8000
