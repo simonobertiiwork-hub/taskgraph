@@ -1,10 +1,11 @@
+![CI](https://github.com/simonobertiiwork-hub/taskgraph/actions/workflows/ci-cd.yml/badge.svg)
 # TaskGraph
 
 Backend research project focused on reproducing and analyzing production-like backend scenarios.
 
 ## Stack
 
-Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • Kubernetes • k6 • Prometheus • Grafana
+Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • Kubernetes • Pytest • GitHub Actions • CI/CD • k6 • Prometheus • Grafana
 
 ## Goal
 
@@ -196,9 +197,26 @@ Used for:
 
 ---
 
+## CI/CD
+
+GitHub Actions pipeline automatically:
+- installs project dependencies
+- creates environment variables for tests
+- runs pytest test suite
+- builds Docker image
+- publishes Docker image to GitHub Container Registry (GHCR)
+
+Pipeline status is displayed via CI badge at the top of this README.
+
+Implemented using GitHub Actions and GitLab CI.
+
+---
+
 ## Testing
 
-Pytest
+- Pytest
+- GitHub Actions
+- GitLab CI
 
 Performance:
 - k6 load testing
