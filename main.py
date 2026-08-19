@@ -4,7 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 from app.core.handlers import register_exception_handlers
-from app.api import health_router, tasks_router, graph_router
+from app.api import (
+    ai_router,
+    health_router, 
+    tasks_router, 
+    graph_router
+)
 
 
 app = FastAPI(
@@ -80,3 +85,4 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(tasks_router)
 app.include_router(graph_router)
+app.include_router(ai_router)
