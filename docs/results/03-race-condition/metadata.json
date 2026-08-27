@@ -1,0 +1,13 @@
+{
+  "case": "race_condition",
+  "generated_at_utc": "2026-08-27T12:25:59.719125+00:00",
+  "database_url": "postgresql+asyncpg://postgres:***@db:5432/taskgraph",
+  "postgres": {
+    "database_name": "taskgraph",
+    "database_user": "postgres",
+    "server_version": "15.18 (Debian 15.18-1.pgdg13+1)",
+    "transaction_isolation": "read committed"
+  },
+  "fixture_task_id": 200001,
+  "hold_seconds": 1.0
+}

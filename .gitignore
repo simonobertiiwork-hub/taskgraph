@@ -56,6 +56,10 @@ Thumbs.db
 
 *.tmp
 
+# Local demo measurements
+demos/results/*
+!demos/results/.gitkeep
+
 # ======================
 # Build artifacts
 # ======================
@@ -87,10 +91,3 @@ alembic/__pycache__/
 # ======================
 
 docker-compose.override.yml
-
-# ======================
-# Local demo measurements
-# ======================
-
-demos/results/*
-!demos/results/.gitkeep

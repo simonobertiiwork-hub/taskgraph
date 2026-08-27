@@ -1,0 +1,61 @@
+{
+  "status": "passed",
+  "before": {
+    "runs": 5,
+    "execution_times_ms": [
+      15.812,
+      13.697,
+      13.505,
+      12.862,
+      12.933
+    ],
+    "median_execution_time_ms": 13.505,
+    "planning_times_ms": [
+      0.091,
+      0.038,
+      0.032,
+      0.025,
+      0.024
+    ],
+    "median_planning_time_ms": 0.032,
+    "node_types": [
+      "Seq Scan"
+    ],
+    "index_names": []
+  },
+  "after": {
+    "runs": 5,
+    "execution_times_ms": [
+      0.043,
+      0.021,
+      0.016,
+      0.014,
+      0.013
+    ],
+    "median_execution_time_ms": 0.016,
+    "planning_times_ms": [
+      0.056,
+      0.043,
+      0.027,
+      0.025,
+      0.025
+    ],
+    "median_planning_time_ms": 0.027,
+    "node_types": [
+      "Index Scan"
+    ],
+    "index_names": [
+      "idx_tasks_title"
+    ]
+  },
+  "comparison": {
+    "speedup": 844.0625,
+    "execution_time_reduction_percent": 99.88152536097742
+  },
+  "verification": {
+    "before_uses_seq_scan": true,
+    "after_uses_index_plan": true,
+    "after_uses_expected_index": true,
+    "after_median_is_faster": true
+  }
+}

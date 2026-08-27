@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
-from typing import Any, Iterable
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
@@ -18,7 +19,6 @@ from demos.common.database import (
     safe_database_url,
 )
 from demos.common.reporting import create_result_directory, write_json, write_text
-
 
 CASE_NAME = "index_scan"
 INDEX_NAME = "idx_tasks_title"

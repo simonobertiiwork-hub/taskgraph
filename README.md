@@ -41,12 +41,20 @@ FastAPI
 
 Seq Scan vs Index Scan.
 
-Result:
-13.9 ms → 0.07 ms
+Verified local run:
+- PostgreSQL 15.18
+- 200,000 rows
+- median of 5 measured executions
+- 13.505 ms → 0.016 ms
+- Seq Scan → Index Scan
+- shared buffer hits: 1667 → 4
 
 Investigation:
 - selectivity
-- EXPLAIN ANALYZE
+- EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+
+Reproduce:
+`docker compose exec app python -m demos index-scan --confirm-reset`
 
 ---
 
@@ -77,16 +85,24 @@ async != infinite parallelism
 
 3. Race Condition
 
-Lost Update reproduction.
+Concurrent update investigation.
 
 Implemented:
 - Last Write Wins
 - Pessimistic Locking
 - Optimistic Locking
 
-Result:
-- concurrent updates → 409 Conflict
-- prevents silent data loss
+Verified local run:
+- PostgreSQL 15.18 with `read committed` isolation
+- two distinct PostgreSQL connections per strategy
+- Last Write Wins reproduced a lost update
+- `SELECT FOR UPDATE` lock wait: 1.009599 s
+- stale version update affected 0 rows
+- accepted update incremented version from 1 to 2
+- API version conflict maps to HTTP 409
+
+Reproduce:
+`docker compose exec app python -m demos race-condition --confirm-write`
 
 ---
 
@@ -224,6 +240,28 @@ Performance:
 
 Run:
 docker compose run --rm app pytest tests/ -v
+
+---
+
+## Reproducible Demos
+
+Engineering cases are executed from code and store raw measurements together
+with generated reports.
+
+Run the PostgreSQL index case:
+
+```bash
+docker compose exec app python -m demos index-scan --confirm-reset
+```
+
+Run the concurrency case:
+
+```bash
+docker compose exec app python -m demos race-condition --confirm-write
+```
+
+Detailed commands and result-file descriptions:
+`demos/README.md`
 
 ---
 

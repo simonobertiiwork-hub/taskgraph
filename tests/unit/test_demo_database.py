@@ -4,6 +4,7 @@ from sqlalchemy.engine import make_url
 from demos.common.database import (
     DemoSafetyError,
     require_demo_reset_confirmation,
+    require_demo_write_confirmation,
     safe_database_url,
 )
 
@@ -53,3 +54,16 @@ def test_reset_allows_confirmed_taskgraph_database():
     engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/taskgraph")
 
     require_demo_reset_confirmation(engine, confirmed=True)
+
+
+def test_race_demo_requires_explicit_write_confirmation():
+    engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/taskgraph")
+
+    with pytest.raises(DemoSafetyError, match="--confirm-write"):
+        require_demo_write_confirmation(engine, confirmed=False)
+
+
+def test_race_demo_allows_confirmed_taskgraph_database():
+    engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/taskgraph")
+
+    require_demo_write_confirmation(engine, confirmed=True)

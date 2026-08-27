@@ -9,8 +9,8 @@ from pathlib import Path
 from sqlalchemy.exc import SQLAlchemyError
 
 from demos.cases.index_scan import IndexScanConfig, run_index_scan
+from demos.cases.race_condition import RaceConditionConfig, run_race_condition
 from demos.common.database import DemoSafetyError
-
 
 DEFAULT_RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
@@ -18,6 +18,14 @@ DEFAULT_RESULTS_DIR = Path(__file__).resolve().parent / "results"
 def positive_int(value: str) -> int:
     """Parse an integer CLI option that must be greater than zero."""
     parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be greater than zero")
+    return parsed
+
+
+def positive_float(value: str) -> float:
+    """Parse a floating-point CLI option that must be greater than zero."""
+    parsed = float(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("value must be greater than zero")
     return parsed
@@ -65,6 +73,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow the demo to truncate the tasks table.",
     )
 
+    race_parser = subparsers.add_parser(
+        "race-condition",
+        help="Compare unsafe, pessimistic, and optimistic concurrent writes.",
+    )
+    race_parser.add_argument(
+        "--hold-seconds",
+        type=positive_float,
+        default=1.0,
+        help="How long transaction A holds the row lock (default: 1.0).",
+    )
+    race_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_RESULTS_DIR,
+        help="Directory for generated evidence reports.",
+    )
+    race_parser.add_argument(
+        "--confirm-write",
+        action="store_true",
+        help="Allow the demo to create, update, and delete one task fixture.",
+    )
+
     return parser
 
 
@@ -92,28 +122,57 @@ async def run_index_scan_command(args: argparse.Namespace) -> int:
     return 0 if result["status"] == "passed" else 1
 
 
+async def run_race_condition_command(args: argparse.Namespace) -> int:
+    """Run the race-condition command using the application database."""
+    from app.db.session import engine
+
+    config = RaceConditionConfig(
+        hold_seconds=args.hold_seconds,
+        output_dir=args.output_dir,
+        confirm_write=args.confirm_write,
+    )
+
+    try:
+        result = await run_race_condition(engine, config)
+    finally:
+        await engine.dispose()
+
+    print()
+    print(f"Result: {result['status'].upper()}")
+    print(f"Report: {result['report_path']}")
+    return 0 if result["status"] == "passed" else 1
+
+
+def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """Dispatch one parsed demo command with consistent error handling."""
+    command = {
+        "index-scan": run_index_scan_command,
+        "race-condition": run_race_condition_command,
+    }.get(args.case)
+
+    if command is None:
+        parser.error(f"Unknown demo case: {args.case}")
+
+    try:
+        return asyncio.run(command(args))
+    except (DemoSafetyError, ValueError) as exc:
+        parser.exit(status=2, message=f"error: {exc}\n")
+    except SQLAlchemyError:
+        parser.exit(
+            status=2,
+            message=(
+                "error: Could not execute the PostgreSQL demo. "
+                "Check docker compose ps and run the command "
+                "inside the app container.\n"
+            ),
+        )
+
+
 def main() -> int:
     """Parse arguments and run the requested demo."""
     parser = build_parser()
     args = parser.parse_args()
-
-    if args.case == "index-scan":
-        try:
-            return asyncio.run(run_index_scan_command(args))
-        except (DemoSafetyError, ValueError) as exc:
-            parser.exit(status=2, message=f"error: {exc}\n")
-        except SQLAlchemyError:
-            parser.exit(
-                status=2,
-                message=(
-                    "error: Could not execute the PostgreSQL demo. "
-                    "Check docker compose ps and run the command "
-                    "inside the app container.\n"
-                ),
-            )
-
-    parser.error(f"Unknown demo case: {args.case}")
-    return 2
+    return run_command(parser, args)
 
 
 if __name__ == "__main__":
