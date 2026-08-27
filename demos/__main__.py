@@ -5,9 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 from pathlib import Path
+from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.ai.repositories.runs import FileRunRepository, RunRepositoryError
+from app.ai.schemas import RunScenario, RunStatus
+from app.ai.tools.index_scan import IndexScanTools
 from demos.cases.index_scan import IndexScanConfig, run_index_scan
 from demos.cases.race_condition import RaceConditionConfig, run_race_condition
 from demos.common.database import DemoSafetyError
@@ -95,6 +99,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow the demo to create, update, and delete one task fixture.",
     )
 
+    inspect_parser = subparsers.add_parser(
+        "inspect-index-run",
+        help="Validate one index-scan run and print grounded tool outputs.",
+    )
+    inspect_parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=DEFAULT_RESULTS_DIR,
+        help="Root containing versioned run manifests.",
+    )
+    inspect_parser.add_argument(
+        "--run-id",
+        type=UUID,
+        help="Specific run UUID; defaults to the latest index-scan run.",
+    )
+
     return parser
 
 
@@ -118,6 +138,7 @@ async def run_index_scan_command(args: argparse.Namespace) -> int:
 
     print()
     print(f"Result: {result['status'].upper()}")
+    print(f"Run ID: {result['run_id']}")
     print(f"Report: {result['report_path']}")
     return 0 if result["status"] == "passed" else 1
 
@@ -139,8 +160,42 @@ async def run_race_condition_command(args: argparse.Namespace) -> int:
 
     print()
     print(f"Result: {result['status'].upper()}")
+    print(f"Run ID: {result['run_id']}")
     print(f"Report: {result['report_path']}")
     return 0 if result["status"] == "passed" else 1
+
+
+async def run_inspect_index_run_command(args: argparse.Namespace) -> int:
+    """Exercise the future agent tools without making any LLM call."""
+    repository = FileRunRepository(args.results_dir)
+    run = (
+        repository.get(args.run_id)
+        if args.run_id is not None
+        else repository.latest(RunScenario.INDEX_SCAN)
+    )
+    tools = IndexScanTools(repository)
+    summary = tools.get_run_summary(run.manifest.run_id)
+    plans = tools.get_query_plan(run.manifest.run_id)
+
+    print("TaskGraph AI evidence contract: Index Scan")
+    print(f"Run ID: {summary.run_id}")
+    print(f"Schema version: {summary.schema_version}")
+    print(f"Dataset rows: {summary.dataset_rows}")
+    print(
+        "Median execution time: "
+        f"{summary.before_execution_time_ms:.6f} ms -> "
+        f"{summary.after_execution_time_ms:.6f} ms"
+    )
+    print(
+        "Plan transition: "
+        f"{', '.join(plans.before.node_types)} -> "
+        f"{', '.join(plans.after.node_types)}"
+    )
+    print(f"Evidence references: {len(summary.evidence) + len(plans.evidence)}")
+    passed = summary.status == RunStatus.PASSED and plans.transition_verified is True
+    print()
+    print(f"Result: {'PASSED' if passed else 'FAILED'}")
+    return 0 if passed else 1
 
 
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
@@ -148,6 +203,7 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
     command = {
         "index-scan": run_index_scan_command,
         "race-condition": run_race_condition_command,
+        "inspect-index-run": run_inspect_index_run_command,
     }.get(args.case)
 
     if command is None:
@@ -155,7 +211,7 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
 
     try:
         return asyncio.run(command(args))
-    except (DemoSafetyError, ValueError) as exc:
+    except (DemoSafetyError, RunRepositoryError, ValueError) as exc:
         parser.exit(status=2, message=f"error: {exc}\n")
     except SQLAlchemyError:
         parser.exit(

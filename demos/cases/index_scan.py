@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 from typing import Any
@@ -18,7 +17,12 @@ from demos.common.database import (
     require_demo_reset_confirmation,
     safe_database_url,
 )
-from demos.common.reporting import create_result_directory, write_json, write_text
+from demos.common.reporting import (
+    create_run_context,
+    finalize_run,
+    write_json,
+    write_text,
+)
 
 CASE_NAME = "index_scan"
 INDEX_NAME = "idx_tasks_title"
@@ -235,6 +239,7 @@ def render_report(metadata: dict[str, Any], summary: dict[str, Any]) -> str:
     return f"""# Case #1: PostgreSQL Seq Scan to Index Scan
 
 Generated at: `{metadata["generated_at_utc"]}`
+Run ID: `{metadata["run_id"]}`
 
 ## Environment
 
@@ -280,7 +285,8 @@ async def run_index_scan(
     config.validate()
     require_demo_reset_confirmation(engine, confirmed=config.confirm_reset)
 
-    result_dir = create_result_directory(config.output_dir, CASE_NAME)
+    run_context = create_run_context(config.output_dir, CASE_NAME)
+    result_dir = run_context.result_dir
     lookup_title = f"task {config.target}"
 
     print("TaskGraph demo: PostgreSQL Seq Scan to Index Scan")
@@ -314,8 +320,10 @@ async def run_index_scan(
 
     summary = build_summary(before_plans, after_plans)
     metadata = {
+        "schema_version": 1,
+        "run_id": str(run_context.run_id),
         "case": CASE_NAME,
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_at_utc": run_context.started_at_utc.isoformat(),
         "database_url": safe_database_url(engine),
         "postgres": postgres_metadata,
         "dataset": {
@@ -349,6 +357,17 @@ async def run_index_scan(
     write_json(result_dir / "summary.json", summary)
     report_path = result_dir / "report.md"
     write_text(report_path, render_report(metadata, summary))
+    manifest_path = finalize_run(
+        run_context,
+        status=summary["status"],
+        artifact_names=(
+            "metadata.json",
+            "before.json",
+            "after.json",
+            "summary.json",
+            "report.md",
+        ),
+    )
 
     print(
         "Median execution time: "
@@ -358,7 +377,9 @@ async def run_index_scan(
 
     return {
         "status": summary["status"],
+        "run_id": run_context.run_id,
         "result_dir": result_dir,
+        "manifest_path": manifest_path,
         "report_path": report_path,
         "summary": summary,
     }

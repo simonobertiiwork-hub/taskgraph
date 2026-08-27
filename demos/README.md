@@ -39,6 +39,8 @@ docker compose exec app python -m demos index-scan \
 Every run creates a UTC-stamped directory under `demos/results/index_scan/`
 with:
 
+- `manifest.json` — schema version, immutable `run_id`, status, artifact paths,
+  sizes, media types, and SHA-256 digests;
 - `metadata.json` — PostgreSQL version and exact run parameters;
 - `before.json` — raw `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plans;
 - `after.json` — raw plans after index creation;
@@ -48,6 +50,24 @@ with:
 The case passes only when every pre-change plan contains `Seq Scan`, every
 post-change plan uses `idx_tasks_title`, and the median execution time is lower
 after index creation.
+
+Validate the latest run through the same typed read-only tools that the AI
+agent will use:
+
+```bash
+docker compose exec app python -m demos inspect-index-run
+```
+
+To inspect one exact run instead of the latest one:
+
+```bash
+docker compose exec app python -m demos inspect-index-run \
+  --run-id 00000000-0000-0000-0000-000000000000
+```
+
+The command verifies artifact checksums, cross-checks the raw PostgreSQL plans
+against `summary.json`, and prints the number of stable evidence references.
+It does not access an LLM and does not write to the database.
 
 ## Case #2: PostgreSQL Race Condition
 
@@ -80,3 +100,4 @@ docker compose exec app python -m demos race-condition \
 Every run creates a UTC-stamped directory under
 `demos/results/race_condition/` with PostgreSQL metadata, machine-readable
 verification checks, measured lock-wait time, and a generated Markdown report.
+New runs use the same versioned manifest contract and receive their own UUID.

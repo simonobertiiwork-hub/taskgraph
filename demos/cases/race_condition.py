@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +17,12 @@ from demos.common.database import (
     require_demo_write_confirmation,
     safe_database_url,
 )
-from demos.common.reporting import create_result_directory, write_json, write_text
+from demos.common.reporting import (
+    create_run_context,
+    finalize_run,
+    write_json,
+    write_text,
+)
 
 CASE_NAME = "race_condition"
 ORIGINAL_TITLE = "race demo original"
@@ -367,6 +371,7 @@ def render_race_report(metadata: dict[str, Any], summary: dict[str, Any]) -> str
     return f"""# Case #2: PostgreSQL Race Condition
 
 Generated at: `{metadata["generated_at_utc"]}`
+Run ID: `{metadata["run_id"]}`
 
 ## Environment
 
@@ -405,7 +410,8 @@ async def run_race_condition(
     config.validate()
     require_demo_write_confirmation(engine, confirmed=config.confirm_write)
 
-    result_dir = create_result_directory(config.output_dir, CASE_NAME)
+    run_context = create_run_context(config.output_dir, CASE_NAME)
+    result_dir = run_context.result_dir
     task_id: int | None = None
 
     print("TaskGraph demo: PostgreSQL race condition and locking")
@@ -438,8 +444,10 @@ async def run_race_condition(
         )
 
         metadata = {
+            "schema_version": 1,
+            "run_id": str(run_context.run_id),
             "case": CASE_NAME,
-            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "generated_at_utc": run_context.started_at_utc.isoformat(),
             "database_url": safe_database_url(engine),
             "postgres": postgres_metadata,
             "fixture_task_id": task_id,
@@ -449,6 +457,11 @@ async def run_race_condition(
         write_json(result_dir / "summary.json", summary)
         report_path = result_dir / "report.md"
         write_text(report_path, render_race_report(metadata, summary))
+        manifest_path = finalize_run(
+            run_context,
+            status=summary["status"],
+            artifact_names=("metadata.json", "summary.json", "report.md"),
+        )
 
         wait_seconds = pessimistic_lock["transaction_b"]["lock_wait_seconds"]
         conflict = optimistic_lock["transaction_b_conflict_detected"]
@@ -457,7 +470,9 @@ async def run_race_condition(
 
         return {
             "status": summary["status"],
+            "run_id": run_context.run_id,
             "result_dir": result_dir,
+            "manifest_path": manifest_path,
             "report_path": report_path,
             "summary": summary,
         }
