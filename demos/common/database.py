@@ -8,11 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 
-PROTECTED_DATABASE_NAMES = {
-    "postgres",
-    "template0",
-    "template1",
-}
+PROTECTED_DATABASE_NAMES = {"postgres", "template0", "template1"}
 
 
 class DemoSafetyError(RuntimeError):
@@ -20,10 +16,8 @@ class DemoSafetyError(RuntimeError):
 
 
 def safe_database_url(engine: AsyncEngine) -> str:
-    """Return the database URL without exposing its password."""
-    return engine.url.render_as_string(
-        hide_password=True,
-    )
+    """Return the configured URL without exposing the database password."""
+    return engine.url.render_as_string(hide_password=True)
 
 
 def require_demo_reset_confirmation(
@@ -31,8 +25,7 @@ def require_demo_reset_confirmation(
     *,
     confirmed: bool,
 ) -> None:
-    """Protect the database against accidental table truncation."""
-
+    """Protect against accidental truncation of a non-demo database."""
     if engine.dialect.name != "postgresql":
         raise DemoSafetyError(
             "This demonstration requires PostgreSQL; "
@@ -40,11 +33,8 @@ def require_demo_reset_confirmation(
         )
 
     database_name = engine.url.database
-
     if not database_name:
-        raise DemoSafetyError(
-            "DATABASE_URL does not contain a database name."
-        )
+        raise DemoSafetyError("DATABASE_URL does not contain a database name.")
 
     if database_name.lower() in PROTECTED_DATABASE_NAMES:
         raise DemoSafetyError(
@@ -58,12 +48,9 @@ def require_demo_reset_confirmation(
         )
 
 
-async def read_postgres_metadata(
-    connection: AsyncConnection,
-) -> dict[str, Any]:
-    """Read information about the active PostgreSQL database."""
-
-    result = await connection.execute(
+async def read_postgres_metadata(conn: AsyncConnection) -> dict[str, Any]:
+    """Read reproducibility metadata from the active PostgreSQL connection."""
+    result = await conn.execute(
         text(
             """
             SELECT
@@ -73,7 +60,5 @@ async def read_postgres_metadata(
             """
         )
     )
-
     row = result.mappings().one()
-
     return dict(row)

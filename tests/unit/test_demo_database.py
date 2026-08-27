@@ -14,78 +14,42 @@ class FakeDialect:
 
 
 class FakeEngine:
-    def __init__(
-        self,
-        url: str,
-        dialect: str = "postgresql",
-    ):
+    def __init__(self, url: str, dialect: str = "postgresql"):
         self.url = make_url(url)
         self.dialect = FakeDialect(dialect)
 
 
 def test_safe_database_url_hides_password():
-    engine = FakeEngine(
-        "postgresql+asyncpg://user:secret@db:5432/taskgraph"
-    )
+    engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/taskgraph")
 
-    rendered_url = safe_database_url(engine)
+    rendered = safe_database_url(engine)
 
-    assert "secret" not in rendered_url
-    assert "***" in rendered_url
+    assert "secret" not in rendered
+    assert "***" in rendered
 
 
 def test_reset_requires_explicit_confirmation():
-    engine = FakeEngine(
-        "postgresql+asyncpg://user:secret@db:5432/taskgraph"
-    )
+    engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/taskgraph")
 
-    with pytest.raises(
-        DemoSafetyError,
-        match="--confirm-reset",
-    ):
-        require_demo_reset_confirmation(
-            engine,
-            confirmed=False,
-        )
+    with pytest.raises(DemoSafetyError, match="--confirm-reset"):
+        require_demo_reset_confirmation(engine, confirmed=False)
 
 
-def test_reset_refuses_protected_database():
-    engine = FakeEngine(
-        "postgresql+asyncpg://user:secret@db:5432/postgres"
-    )
+def test_reset_refuses_protected_postgres_database():
+    engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/postgres")
 
-    with pytest.raises(
-        DemoSafetyError,
-        match="protected database",
-    ):
-        require_demo_reset_confirmation(
-            engine,
-            confirmed=True,
-        )
+    with pytest.raises(DemoSafetyError, match="protected database"):
+        require_demo_reset_confirmation(engine, confirmed=True)
 
 
-def test_reset_refuses_non_postgresql_database():
-    engine = FakeEngine(
-        "sqlite+aiosqlite:///:memory:",
-        dialect="sqlite",
-    )
+def test_reset_refuses_non_postgresql_dialect():
+    engine = FakeEngine("sqlite+aiosqlite:///:memory:", dialect="sqlite")
 
-    with pytest.raises(
-        DemoSafetyError,
-        match="requires PostgreSQL",
-    ):
-        require_demo_reset_confirmation(
-            engine,
-            confirmed=True,
-        )
+    with pytest.raises(DemoSafetyError, match="requires PostgreSQL"):
+        require_demo_reset_confirmation(engine, confirmed=True)
 
 
 def test_reset_allows_confirmed_taskgraph_database():
-    engine = FakeEngine(
-        "postgresql+asyncpg://user:secret@db:5432/taskgraph"
-    )
+    engine = FakeEngine("postgresql+asyncpg://user:secret@db:5432/taskgraph")
 
-    require_demo_reset_confirmation(
-        engine,
-        confirmed=True,
-    )
+    require_demo_reset_confirmation(engine, confirmed=True)
