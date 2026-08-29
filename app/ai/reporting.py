@@ -6,9 +6,12 @@ from typing import Any
 
 from app.ai.errors import AIIncidentError
 from app.ai.schemas import (
+    DocumentCitation,
     IncidentAnalysisRequest,
     IncidentReportDraft,
     IndexScanMeasuredResult,
+    RaceConditionMeasuredResult,
+    RunScenario,
     SupportedStatement,
 )
 
@@ -28,8 +31,12 @@ def _evidence_id(result: dict[str, Any], pointer: str) -> str:
 def build_grounded_incident_report(
     request: IncidentAnalysisRequest,
     tool_results: dict[str, dict[str, Any]],
+    retrieved_documents: list[Any] | None = None,
 ) -> IncidentReportDraft:
     """Build the canonical report from verified tools without generative JSON."""
+    documents = retrieved_documents or []
+    if "get_concurrency_metrics" in tool_results:
+        return _build_race_report(request, tool_results["get_concurrency_metrics"], documents)
     try:
         summary = tool_results["get_run_summary"]
         plans = tool_results["get_query_plan"]
@@ -87,5 +94,43 @@ def build_grounded_incident_report(
             after_ms=after_ms,
             speedup=speedup,
         ),
+        sources=[DocumentCitation(**item.citation_payload()) for item in documents[:5]],
         limitations=["Результат получен в локальном воспроизводимом сценарии."],
+    )
+
+
+def _build_race_report(request: IncidentAnalysisRequest, metrics: dict[str, Any], documents: list[Any]) -> IncidentReportDraft:
+    try:
+        lost = bool(metrics["lost_update_detected"])
+        stale_rows = int(metrics["stale_writer_rows_updated"])
+        conflict = bool(metrics["optimistic_conflict_detected"])
+        version = int(metrics["optimistic_final_version"])
+        wait = float(metrics["pessimistic_lock_wait_seconds"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AIIncidentError(f"Race tool result cannot build a report: {exc}") from exc
+    lost_id = _evidence_id(metrics, "/verification/last_write_wins/first_write_was_lost")
+    both_id = _evidence_id(metrics, "/verification/last_write_wins/both_transactions_read_original")
+    wait_id = _evidence_id(metrics, "/scenarios/pessimistic_lock/transaction_b/lock_wait_seconds")
+    stale_id = _evidence_id(metrics, "/scenarios/optimistic_lock/transaction_b_rows_updated")
+    conflict_id = _evidence_id(metrics, "/scenarios/optimistic_lock/transaction_b_conflict_detected")
+    version_id = _evidence_id(metrics, "/scenarios/optimistic_lock/final/version")
+    limitations = ["Результат получен в локальном воспроизводимом сценарии."]
+    if not documents:
+        limitations.append("RAG не вернул документацию выше порога релевантности.")
+    return IncidentReportDraft(
+        run_id=request.run_id,
+        scenario=RunScenario.RACE_CONDITION,
+        summary=SupportedStatement(text="Сценарий воспроизвёл потерю обновления и подтвердил отклонение устаревшей записи через optimistic locking.", evidence_ids=[lost_id, conflict_id]),
+        problem=SupportedStatement(text="Две транзакции прочитали исходное состояние, после чего запись первой транзакции была потеряна.", evidence_ids=[both_id, lost_id]),
+        root_cause=SupportedStatement(text="Обновление выполнялось без блокировки строки и без проверки версии прочитанного состояния.", evidence_ids=[both_id, lost_id]),
+        applied_fix=SupportedStatement(text=f"Проверены SELECT FOR UPDATE с ожиданием {wait:.6f} с и optimistic locking по полю version.", evidence_ids=[wait_id, stale_id]),
+        result=RaceConditionMeasuredResult(
+            statement=SupportedStatement(text=f"Устаревший writer обновил {stale_rows} строк, конфликт обнаружен, итоговая версия равна {version}.", evidence_ids=[stale_id, conflict_id, version_id]),
+            lost_update_detected=lost,
+            stale_writer_rows_updated=stale_rows,
+            optimistic_conflict_detected=conflict,
+            optimistic_final_version=version,
+        ),
+        sources=[DocumentCitation(**item.citation_payload()) for item in documents[:5]],
+        limitations=limitations,
     )

@@ -108,6 +108,22 @@ class IndexScanPlanComparison(StrictModel):
     evidence: list[EvidenceRef]
 
 
+class RaceConditionMetrics(StrictModel):
+    """Verified outcomes of unsafe, pessimistic and optimistic writes."""
+
+    schema_version: Literal[RUN_SCHEMA_VERSION] = RUN_SCHEMA_VERSION
+    run_id: UUID
+    scenario: Literal[RunScenario.RACE_CONDITION] = RunScenario.RACE_CONDITION
+    status: RunStatus
+    lost_update_detected: bool
+    both_transactions_read_original: bool
+    pessimistic_lock_wait_seconds: float = Field(ge=0)
+    stale_writer_rows_updated: int = Field(ge=0)
+    optimistic_conflict_detected: bool
+    optimistic_final_version: int = Field(gt=0)
+    evidence: list[EvidenceRef]
+
+
 class LLMUsage(StrictModel):
     """Token counts reported by an OpenAI-compatible provider."""
 
@@ -154,17 +170,48 @@ class IndexScanMeasuredResult(StrictModel):
     speedup: float = Field(gt=0)
 
 
+class RaceConditionMeasuredResult(StrictModel):
+    """Concurrency result copied from verified demonstration artifacts."""
+
+    statement: SupportedStatement
+    lost_update_detected: bool
+    stale_writer_rows_updated: int = Field(ge=0)
+    optimistic_conflict_detected: bool
+    optimistic_final_version: int = Field(gt=0)
+
+
+class DocumentCitation(StrictModel):
+    """One documentation chunk returned by the RAG retriever."""
+
+    chunk_id: UUID
+    source_path: str = Field(min_length=1)
+    section: str = Field(min_length=1)
+    scenario: RunScenario | None = None
+    score: float = Field(ge=0, le=1)
+
+
 class IncidentReportDraft(StrictModel):
     """Strict structured output produced and then deterministically validated."""
 
     run_id: UUID
-    scenario: Literal[RunScenario.INDEX_SCAN] = RunScenario.INDEX_SCAN
+    scenario: RunScenario = RunScenario.INDEX_SCAN
     summary: SupportedStatement
     problem: SupportedStatement
     root_cause: SupportedStatement
     applied_fix: SupportedStatement
-    result: IndexScanMeasuredResult
+    result: IndexScanMeasuredResult | RaceConditionMeasuredResult
+    sources: list[DocumentCitation] = Field(default_factory=list, max_length=5)
     limitations: list[str] = Field(default_factory=list, max_length=5)
+
+    @model_validator(mode="after")
+    def result_matches_scenario(self) -> IncidentReportDraft:
+        expected = {
+            RunScenario.INDEX_SCAN: IndexScanMeasuredResult,
+            RunScenario.RACE_CONDITION: RaceConditionMeasuredResult,
+        }.get(self.scenario)
+        if expected is None or not isinstance(self.result, expected):
+            raise ValueError("result payload does not match report scenario")
+        return self
 
 
 class RequestedToolCall(StrictModel):

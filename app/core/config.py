@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     llm_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
     llm_trust_env: bool = False
 
+    embedding_provider: str = "hash"
+    embedding_model: str = "taskgraph-hash-v1"
+    embedding_dimensions: int = Field(default=768, ge=64, le=4096)
+    rag_top_k: int = Field(default=5, ge=1, le=20)
+    rag_score_threshold: float = Field(default=0.08, ge=0, le=1)
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

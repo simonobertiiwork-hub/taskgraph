@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.ai.errors import ToolPlanError
 from app.ai.tools.index_scan import IndexScanTools
+from app.ai.tools.race_condition import RaceConditionTools
 
 
 class RunIdInput(BaseModel):
@@ -63,7 +64,10 @@ class LangChainToolRegistry:
         return result
 
 
-def build_index_tool_registry(index_tools: IndexScanTools) -> LangChainToolRegistry:
+def build_index_tool_registry(
+    index_tools: IndexScanTools,
+    race_tools: RaceConditionTools | None = None,
+) -> LangChainToolRegistry:
     """Create two real LangChain tools over verified TaskGraph artifacts."""
     from langchain_core.tools import StructuredTool
 
@@ -95,4 +99,20 @@ def build_index_tool_registry(index_tools: IndexScanTools) -> LangChainToolRegis
             args_schema=RunIdInput,
         ),
     ]
+    if race_tools is not None:
+        def get_concurrency_metrics(run_id: UUID) -> dict[str, Any]:
+            """Return verified lost-update and locking outcomes for one run."""
+            return race_tools.get_concurrency_metrics(run_id).model_dump(mode="json")
+
+        tools.append(
+            StructuredTool.from_function(
+                func=get_concurrency_metrics,
+                name="get_concurrency_metrics",
+                description=(
+                    "Get verified lost-update, pessimistic-lock wait and optimistic "
+                    "version-conflict evidence for a TaskGraph race-condition run."
+                ),
+                args_schema=RunIdInput,
+            )
+        )
     return LangChainToolRegistry({tool.name: tool for tool in tools})

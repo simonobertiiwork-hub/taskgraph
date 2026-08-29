@@ -133,3 +133,24 @@ Every run writes `request.json`, `tool_calls.json`, `provider_calls.json`,
 `report.json`, and `report.md` below
 `demos/results/ai_incident_analyst/`. Ordinary tests and CI use
 `StubLLMProvider` and never contact Ollama.
+
+## Step 3: pgvector RAG + Race Condition analysis
+
+The RAG index stores heading-aware Markdown chunks, document hashes, versions,
+scenario metadata and 768-dimensional embeddings in PostgreSQL/pgvector. The
+default signed feature-hash embedding is deterministic and needs no additional
+model download. Re-running the command only rewrites changed documents and
+removes sources that no longer exist.
+
+```bash
+docker compose build app
+docker compose up -d db ollama app
+docker compose exec app alembic upgrade head
+docker compose exec app python -m demos rag-index
+docker compose exec app python -m demos race-condition --confirm-write
+docker compose exec app python -m demos ai-incident-analyst --scenario race-condition
+```
+
+The workflow calls `get_concurrency_metrics`, retrieves up to five relevant
+documentation chunks, and writes their path, heading and cosine score into the
+report. The final technical claims still come only from verified run evidence.

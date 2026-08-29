@@ -20,6 +20,10 @@ from app.ai.schemas import (
 )
 from app.ai.tool_registry import build_index_tool_registry
 from app.ai.tools.index_scan import IndexScanTools
+from app.ai.tools.race_condition import RaceConditionTools
+from app.ai.rag.embeddings import HashEmbeddingProvider
+from app.ai.rag.repository import PgVectorDocumentRepository
+from app.ai.rag.service import RAGService
 from app.core.config import Settings
 from demos.common.reporting import write_json, write_text
 
@@ -38,6 +42,7 @@ class AIIncidentDemoConfig:
     output_dir: Path = Path("demos/results")
     run_id: UUID | None = None
     question: str = DEFAULT_QUESTION
+    scenario: RunScenario = RunScenario.INDEX_SCAN
 
 
 def _render_report(response: IncidentAnalysisResponse) -> str:
@@ -56,6 +61,19 @@ Status: **FAILED**
 
     report = response.report
     limitations = "\n".join(f"- {item}" for item in report.limitations) or "- None"
+    if report.scenario == RunScenario.INDEX_SCAN:
+        measured = f"- Before: `{report.result.before_ms}` ms\n- After: `{report.result.after_ms}` ms\n- Speedup: `{report.result.speedup}`x"
+    else:
+        measured = (
+            f"- Lost update reproduced: `{report.result.lost_update_detected}`\n"
+            f"- Stale writer rows updated: `{report.result.stale_writer_rows_updated}`\n"
+            f"- Optimistic conflict detected: `{report.result.optimistic_conflict_detected}`\n"
+            f"- Final version: `{report.result.optimistic_final_version}`"
+        )
+    sources = "\n".join(
+        f"- `{item.source_path}` — {item.section} (score `{item.score:.3f}`)"
+        for item in report.sources
+    ) or "- No source exceeded the relevance threshold"
     return f"""# TaskGraph AI Incident Analyst
 
 Analysis ID: `{response.analysis_id}`
@@ -82,9 +100,11 @@ Status: **COMPLETED**
 
 {report.result.statement.text}
 
-- Before: `{report.result.before_ms}` ms
-- After: `{report.result.after_ms}` ms
-- Speedup: `{report.result.speedup}`x
+{measured}
+
+## Documentation sources
+
+{sources}
 
 ## Limitations
 
@@ -108,7 +128,7 @@ async def run_ai_incident_analyst(
     run = (
         repository.get(config.run_id)
         if config.run_id is not None
-        else repository.latest(RunScenario.INDEX_SCAN)
+        else repository.latest(config.scenario)
     )
     request = IncidentAnalysisRequest(
         run_id=run.manifest.run_id,
@@ -144,12 +164,21 @@ async def run_ai_incident_analyst(
             backoff_seconds=settings.llm_retry_backoff_seconds,
         )
         index_tools = IndexScanTools(repository)
-        tool_registry = build_index_tool_registry(index_tools)
+        race_tools = RaceConditionTools(repository)
+        tool_registry = build_index_tool_registry(index_tools, race_tools)
+        from app.db.session import AsyncSessionLocal
+        retriever = RAGService(
+            PgVectorDocumentRepository(AsyncSessionLocal),
+            HashEmbeddingProvider(model=settings.embedding_model, dimensions=settings.embedding_dimensions),
+            top_k=settings.rag_top_k,
+            threshold=settings.rag_score_threshold,
+        )
         workflow = IncidentWorkflow(
             provider=provider,
             tool_registry=tool_registry,
             repository=repository,
             deterministic_report=deterministic_report,
+            retriever=retriever,
         )
         response = await workflow.analyze(request)
 
@@ -183,6 +212,7 @@ async def run_ai_incident_analyst(
         "Selected tools: " + ", ".join(call.tool_name for call in response.tool_calls)
     )
     print(f"Validation errors: {len(response.validation_errors)}")
+    print(f"Documentation sources: {len(response.report.sources) if response.report else 0}")
     print(f"Latency: {response.latency_ms:.3f} ms")
     return {
         "status": response.status.value,

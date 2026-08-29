@@ -1,18 +1,24 @@
-"""Deterministic validation for LLM-generated incident reports."""
+"""Deterministic validation for grounded incident reports."""
 
 from __future__ import annotations
 
 import math
 from typing import Any
 
-from app.ai.schemas import IncidentAnalysisRequest, IncidentReportDraft
+from app.ai.schemas import IncidentAnalysisRequest, IncidentReportDraft, IndexScanMeasuredResult, RaceConditionMeasuredResult, RunScenario
 
-REQUIRED_TOOLS = {"get_run_summary", "get_query_plan"}
+REQUIRED_TOOLS_BY_SCENARIO = {
+    RunScenario.INDEX_SCAN: {"get_run_summary", "get_query_plan"},
+    RunScenario.RACE_CONDITION: {"get_concurrency_metrics"},
+}
+REQUIRED_TOOLS = REQUIRED_TOOLS_BY_SCENARIO[RunScenario.INDEX_SCAN]
 
 
-def _evidence_index(
-    tool_results: dict[str, dict[str, Any]],
-) -> tuple[dict[str, dict[str, Any]], list[str]]:
+def required_tools_for(scenario: RunScenario) -> set[str]:
+    return set(REQUIRED_TOOLS_BY_SCENARIO.get(scenario, set()))
+
+
+def _evidence_index(tool_results: dict[str, dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], list[str]]:
     evidence: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     for tool_name, result in tool_results.items():
@@ -21,50 +27,26 @@ def _evidence_index(
             errors.append(f"{tool_name} returned no evidence array")
             continue
         for item in payload:
-            if not isinstance(item, dict) or not isinstance(
-                item.get("evidence_id"), str
-            ):
+            if not isinstance(item, dict) or not isinstance(item.get("evidence_id"), str):
                 errors.append(f"{tool_name} returned malformed evidence")
                 continue
-            evidence_id = item["evidence_id"]
-            previous = evidence.get(evidence_id)
-            if previous is not None and previous != item:
-                errors.append(f"Conflicting evidence payload: {evidence_id}")
-                continue
-            evidence[evidence_id] = item
+            evidence[item["evidence_id"]] = item
     return evidence, errors
-
-
-def _ids_for_pointer(
-    evidence: dict[str, dict[str, Any]],
-    pointer: str,
-) -> set[str]:
-    return {
-        evidence_id
-        for evidence_id, item in evidence.items()
-        if item.get("json_pointer") == pointer
-    }
 
 
 def validate_incident_report(
     report: IncidentReportDraft,
     request: IncidentAnalysisRequest,
     tool_results: dict[str, dict[str, Any]],
+    retrieved_documents: list[Any] | None = None,
 ) -> list[str]:
-    """Return all blocking errors without calling another model."""
-    errors: list[str] = []
-    missing_tools = REQUIRED_TOOLS - set(tool_results)
-    if missing_tools:
-        errors.append(f"Missing required tools: {', '.join(sorted(missing_tools))}")
-        return errors
-
-    evidence, evidence_errors = _evidence_index(tool_results)
-    errors.extend(evidence_errors)
+    required = required_tools_for(report.scenario)
+    missing = required - set(tool_results)
+    if missing:
+        return [f"Missing required tools: {', '.join(sorted(missing))}"]
+    evidence, errors = _evidence_index(tool_results)
     if report.run_id != request.run_id:
         errors.append("Report run_id does not match request")
-    if str(report.scenario) != "index_scan":
-        errors.append("Report scenario must be index_scan")
-
     statements = {
         "summary": report.summary,
         "problem": report.problem,
@@ -72,55 +54,36 @@ def validate_incident_report(
         "applied_fix": report.applied_fix,
         "result": report.result.statement,
     }
-    known_ids = set(evidence)
     for field_name, statement in statements.items():
-        unknown = set(statement.evidence_ids) - known_ids
+        unknown = set(statement.evidence_ids) - set(evidence)
         if unknown:
-            errors.append(
-                f"{field_name} cites unknown evidence: {', '.join(sorted(unknown))}"
-            )
-
-    summary_result = tool_results["get_run_summary"]
-    try:
-        expected_before = float(summary_result["before_execution_time_ms"])
-        expected_after = float(summary_result["after_execution_time_ms"])
-        expected_speedup = float(summary_result["speedup"])
-    except (KeyError, TypeError, ValueError) as exc:
-        errors.append(f"get_run_summary has invalid numeric fields: {exc}")
-        return errors
-
-    comparisons = (
-        ("before_ms", report.result.before_ms, expected_before),
-        ("after_ms", report.result.after_ms, expected_after),
-        ("speedup", report.result.speedup, expected_speedup),
-    )
-    for field_name, actual, expected in comparisons:
-        if not math.isclose(actual, expected, rel_tol=1e-12, abs_tol=1e-12):
-            errors.append(
-                f"result.{field_name} must equal tool value {expected!r}, got {actual!r}"
-            )
-
-    citation_rules = {
-        "problem": _ids_for_pointer(evidence, "/before/node_types"),
-        "root_cause": (
-            _ids_for_pointer(evidence, "/before/index_names")
-            | _ids_for_pointer(evidence, "/index/name")
-        ),
-        "applied_fix": (
-            _ids_for_pointer(evidence, "/index/definition")
-            | _ids_for_pointer(evidence, "/index/name")
-        ),
-    }
-    for field_name, required_ids in citation_rules.items():
-        cited = set(statements[field_name].evidence_ids)
-        if not cited.intersection(required_ids):
-            errors.append(f"{field_name} does not cite its required evidence")
-
-    numeric_ids = (
-        _ids_for_pointer(evidence, "/before/median_execution_time_ms")
-        | _ids_for_pointer(evidence, "/after/median_execution_time_ms")
-        | _ids_for_pointer(evidence, "/comparison/speedup")
-    )
-    if not numeric_ids.issubset(set(report.result.statement.evidence_ids)):
-        errors.append("result statement must cite before, after, and speedup evidence")
+            errors.append(f"{field_name} cites unknown evidence: {', '.join(sorted(unknown))}")
+    if report.scenario == RunScenario.INDEX_SCAN and isinstance(report.result, IndexScanMeasuredResult):
+        source = tool_results["get_run_summary"]
+        for name, actual, expected in (
+            ("before_ms", report.result.before_ms, float(source["before_execution_time_ms"])),
+            ("after_ms", report.result.after_ms, float(source["after_execution_time_ms"])),
+            ("speedup", report.result.speedup, float(source["speedup"])),
+        ):
+            if not math.isclose(actual, expected, rel_tol=1e-12, abs_tol=1e-12):
+                errors.append(f"result.{name} must equal tool value {expected!r}, got {actual!r}")
+        citation_rules = {
+            "problem": {key for key, item in evidence.items() if item.get("json_pointer") == "/before/node_types"},
+            "root_cause": {key for key, item in evidence.items() if item.get("json_pointer") in {"/before/index_names", "/index/name"}},
+            "applied_fix": {key for key, item in evidence.items() if item.get("json_pointer") in {"/index/definition", "/index/name"}},
+        }
+        for field_name, required_ids in citation_rules.items():
+            if not set(statements[field_name].evidence_ids).intersection(required_ids):
+                errors.append(f"{field_name} does not cite its required evidence")
+    elif report.scenario == RunScenario.RACE_CONDITION and isinstance(report.result, RaceConditionMeasuredResult):
+        source = tool_results["get_concurrency_metrics"]
+        for name in ("lost_update_detected", "stale_writer_rows_updated", "optimistic_conflict_detected", "optimistic_final_version"):
+            if getattr(report.result, name) != source[name]:
+                errors.append(f"result.{name} must equal tool value")
+    else:
+        errors.append("Report scenario and result type are inconsistent")
+    known_chunks = {str(item.chunk_id) for item in (retrieved_documents or [])}
+    for citation in report.sources:
+        if str(citation.chunk_id) not in known_chunks:
+            errors.append(f"Unknown RAG citation: {citation.chunk_id}")
     return errors

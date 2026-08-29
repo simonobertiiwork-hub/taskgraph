@@ -119,7 +119,7 @@ def write_index_run(
 
 
 def write_race_run(root: Path) -> DemoRunContext:
-    """Write the smallest valid non-index run for routing tests."""
+    """Write a compact, internally consistent race-condition run."""
     context = create_run_context(root, "race_condition")
     write_json(
         context.result_dir / "metadata.json",
@@ -129,7 +129,38 @@ def write_race_run(root: Path) -> DemoRunContext:
             "case": "race_condition",
         },
     )
-    write_json(context.result_dir / "summary.json", {"status": "passed"})
+    write_json(
+        context.result_dir / "summary.json",
+        {
+            "status": "passed",
+            "scenarios": {
+                "last_write_wins": {
+                    "transaction_a_read": {"title": "original", "version": 1},
+                    "transaction_b_read": {"title": "original", "version": 1},
+                    "final": {"title": "task B", "version": 1},
+                },
+                "pessimistic_lock": {
+                    "transaction_b": {"lock_wait_seconds": 1.01},
+                },
+                "optimistic_lock": {
+                    "transaction_b_rows_updated": 0,
+                    "transaction_b_conflict_detected": True,
+                    "final": {"title": "task A", "version": 2},
+                },
+            },
+            "verification": {
+                "last_write_wins": {
+                    "both_transactions_read_original": True,
+                    "first_write_was_lost": True,
+                },
+                "pessimistic_lock": {"second_writer_waited_for_lock": True},
+                "optimistic_lock": {
+                    "stale_second_writer_updated_no_rows": True,
+                    "conflict_was_detected": True,
+                },
+            },
+        },
+    )
     write_text(context.result_dir / "report.md", "# Test race report")
     finalize_run(
         context,

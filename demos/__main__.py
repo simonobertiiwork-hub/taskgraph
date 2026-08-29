@@ -125,11 +125,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Specific run UUID; defaults to the latest index-scan run.",
     )
     ai_parser.add_argument(
+        "--scenario",
+        choices=("index-scan", "race-condition"),
+        default="index-scan",
+        help="Scenario used when --run-id is omitted.",
+    )
+
+    rag_parser = subparsers.add_parser(
+        "rag-index",
+        help="Incrementally index TaskGraph Markdown documentation in pgvector.",
+    )
+    rag_parser.add_argument(
+        "--project-root", type=Path, default=Path("."),
+        help="TaskGraph project root (default: current directory).",
+    )
+    ai_parser.add_argument(
         "--question",
-        default=(
-            "Почему запрос выполнялся медленно, что было причиной и какое "
-            "изменение исправило проблему?"
-        ),
+        default=None,
         help="Technical question passed to the agent as untrusted data.",
     )
     ai_parser.add_argument(
@@ -242,7 +254,15 @@ async def run_ai_incident_analyst_command(args: argparse.Namespace) -> int:
             results_dir=args.results_dir,
             output_dir=args.output_dir,
             run_id=args.run_id,
-            question=args.question,
+            question=(
+                args.question
+                or (
+                    "Почему возник lost update и как optimistic locking с version predicate обнаруживает конфликт?"
+                    if args.scenario == "race-condition"
+                    else "Почему запрос выполнялся медленно, что было причиной и какое изменение исправило проблему?"
+                )
+            ),
+            scenario=(RunScenario.RACE_CONDITION if args.scenario == "race-condition" else RunScenario.INDEX_SCAN),
         ),
     )
     print()
@@ -252,6 +272,30 @@ async def run_ai_incident_analyst_command(args: argparse.Namespace) -> int:
     return 0 if result["passed"] else 1
 
 
+async def run_rag_index_command(args: argparse.Namespace) -> int:
+    from app.ai.rag.embeddings import HashEmbeddingProvider
+    from app.ai.rag.repository import PgVectorDocumentRepository
+    from app.ai.rag.service import RAGService
+    from app.core.config import settings
+    from app.db.session import AsyncSessionLocal, engine
+
+    service = RAGService(
+        PgVectorDocumentRepository(AsyncSessionLocal),
+        HashEmbeddingProvider(model=settings.embedding_model, dimensions=settings.embedding_dimensions),
+        top_k=settings.rag_top_k,
+        threshold=settings.rag_score_threshold,
+    )
+    try:
+        result = await service.index_project(args.project_root.resolve())
+    finally:
+        await engine.dispose()
+    print("TaskGraph RAG index: pgvector")
+    for key, value in result.items():
+        print(f"{key}: {value}")
+    print("Result: PASSED")
+    return 0
+
+
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Dispatch one parsed demo command with consistent error handling."""
     command = {
@@ -259,6 +303,7 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
         "race-condition": run_race_condition_command,
         "inspect-index-run": run_inspect_index_run_command,
         "ai-incident-analyst": run_ai_incident_analyst_command,
+        "rag-index": run_rag_index_command,
     }.get(args.case)
 
     if command is None:

@@ -16,6 +16,8 @@ from app.ai.prompts import (
 )
 from app.ai.provider import LLMCompletion, LLMProvider, strip_markdown_fence
 from app.ai.reporting import build_grounded_incident_report
+from app.ai.rag.service import DocumentRetriever
+from app.ai.rag.schemas import RetrievedChunk
 from app.ai.repositories.runs import FileRunRepository, RunRepositoryError
 from app.ai.schemas import (
     ExecutedToolCall,
@@ -28,7 +30,7 @@ from app.ai.schemas import (
     RunScenario,
 )
 from app.ai.tool_registry import ToolRegistry
-from app.ai.validation import REQUIRED_TOOLS, validate_incident_report
+from app.ai.validation import REQUIRED_TOOLS, required_tools_for, validate_incident_report
 
 MAX_PLAN_ATTEMPTS = 2
 MAX_TOOL_CALLS = 4
@@ -52,6 +54,7 @@ class AnalysisState(TypedDict, total=False):
     draft_report: IncidentReportDraft | None
     validation_errors: list[str]
     fatal_error: str | None
+    retrieved_documents: list[RetrievedChunk]
 
 
 class IncidentWorkflow:
@@ -64,11 +67,13 @@ class IncidentWorkflow:
         tool_registry: ToolRegistry,
         repository: FileRunRepository,
         deterministic_report: bool = False,
+        retriever: DocumentRetriever | None = None,
     ) -> None:
         self.provider = provider
         self.tool_registry = tool_registry
         self.repository = repository
         self.deterministic_report = deterministic_report
+        self.retriever = retriever
 
     async def validate_request_node(self, state: AnalysisState) -> dict[str, Any]:
         request = state["request"]
@@ -76,31 +81,43 @@ class IncidentWorkflow:
             run = self.repository.get(request.run_id)
         except RunRepositoryError as exc:
             return {"fatal_error": str(exc), "validation_errors": [str(exc)]}
-        if run.manifest.scenario != RunScenario.INDEX_SCAN:
+        if run.manifest.scenario not in {RunScenario.INDEX_SCAN, RunScenario.RACE_CONDITION}:
             message = (
                 f"Run {request.run_id} is {run.manifest.scenario.value}; "
-                "step 2 supports only index_scan"
+                "this workflow supports index_scan and race_condition"
             )
             return {"fatal_error": message, "validation_errors": [message]}
-        return {"scenario": run.manifest.scenario, "fatal_error": None}
+        return {
+            "scenario": run.manifest.scenario,
+            "missing_tools": sorted(required_tools_for(run.manifest.scenario)),
+            "fatal_error": None,
+        }
 
     async def plan_tools_node(self, state: AnalysisState) -> dict[str, Any]:
         if state.get("fatal_error"):
             return {}
         request = state["request"]
         results = state.get("tool_results", {})
-        missing = sorted(REQUIRED_TOOLS - set(results))
+        scenario = state["scenario"]
+        missing = sorted(required_tools_for(scenario) - set(results))
         attempt = state.get("plan_attempts", 0) + 1
         messages = build_tool_planning_messages(
             request,
+            scenario=scenario.value,
             missing_tools=missing,
             previous_errors=state.get("plan_errors", []),
         )
         started = time.perf_counter()
+        allowed = required_tools_for(scenario)
+        tool_definitions = [
+            item
+            for item in self.tool_registry.openai_definitions()
+            if item.get("function", {}).get("name") in allowed
+        ]
         try:
             completion = await self.provider.choose_tools(
                 messages=messages,
-                tools=self.tool_registry.openai_definitions(),
+                tools=tool_definitions,
             )
         except AIIncidentError as exc:
             return {
@@ -135,6 +152,11 @@ class IncidentWorkflow:
             if call.tool_name not in self.tool_registry.names:
                 errors.append(f"Unknown or disallowed tool: {call.tool_name}")
                 continue
+            if call.tool_name not in required_tools_for(
+                state.get("scenario", RunScenario.INDEX_SCAN)
+            ):
+                errors.append(f"Tool is not allowed for this scenario: {call.tool_name}")
+                continue
             try:
                 argument_run_id = UUID(str(call.arguments.get("run_id")))
             except (TypeError, ValueError, AttributeError):
@@ -162,7 +184,10 @@ class IncidentWorkflow:
                 )
             )
 
-        missing = sorted(REQUIRED_TOOLS - set(results))
+        missing = sorted(
+            required_tools_for(state.get("scenario", RunScenario.INDEX_SCAN))
+            - set(results)
+        )
         validation_errors: list[str] = []
         if missing and state.get("plan_attempts", 0) >= MAX_PLAN_ATTEMPTS:
             validation_errors.append(
@@ -184,7 +209,7 @@ class IncidentWorkflow:
         if self.deterministic_report:
             try:
                 draft = build_grounded_incident_report(
-                    state["request"], state["tool_results"]
+                    state["request"], state["tool_results"], state.get("retrieved_documents", [])
                 )
             except AIIncidentError as exc:
                 return {
@@ -212,8 +237,20 @@ class IncidentWorkflow:
             draft,
             state["request"],
             state["tool_results"],
+            state.get("retrieved_documents", []),
         )
         return {"validation_errors": errors}
+
+    async def retrieve_documents_node(self, state: AnalysisState) -> dict[str, Any]:
+        if state.get("fatal_error") or self.retriever is None:
+            return {"retrieved_documents": []}
+        try:
+            documents = await self.retriever.search(
+                state["request"].question, state["scenario"]
+            )
+        except Exception:
+            documents = []
+        return {"retrieved_documents": documents}
 
     async def repair_report_node(self, state: AnalysisState) -> dict[str, Any]:
         messages = build_repair_messages(
@@ -295,14 +332,14 @@ class IncidentWorkflow:
     @staticmethod
     def route_after_tools(
         state: AnalysisState,
-    ) -> Literal["plan_tools", "generate_report", "end"]:
+    ) -> Literal["plan_tools", "retrieve_documents", "end"]:
         if state.get("fatal_error") or state.get("validation_errors"):
             return "end"
         if state.get("missing_tools"):
             if state.get("plan_attempts", 0) < MAX_PLAN_ATTEMPTS:
                 return "plan_tools"
             return "end"
-        return "generate_report"
+        return "retrieve_documents"
 
     @staticmethod
     def route_after_validation(
@@ -328,6 +365,7 @@ class IncidentWorkflow:
         builder.add_node("plan_tools", self.plan_tools_node)
         builder.add_node("execute_tools", self.execute_tools_node)
         builder.add_node("generate_report", self.generate_report_node)
+        builder.add_node("retrieve_documents", self.retrieve_documents_node)
         builder.add_node("validate_report", self.validate_report_node)
         builder.add_node("repair_report", self.repair_report_node)
         builder.add_edge(START, "validate_request")
@@ -338,10 +376,11 @@ class IncidentWorkflow:
             self.route_after_tools,
             {
                 "plan_tools": "plan_tools",
-                "generate_report": "generate_report",
+                "retrieve_documents": "retrieve_documents",
                 "end": END,
             },
         )
+        builder.add_edge("retrieve_documents", "generate_report")
         builder.add_edge("generate_report", "validate_report")
         builder.add_conditional_edges(
             "validate_report",
@@ -371,6 +410,7 @@ class IncidentWorkflow:
                 "plan_errors": [],
                 "validation_errors": [],
                 "fatal_error": None,
+                "retrieved_documents": [],
             }
         )
         errors = final.get("validation_errors", [])
