@@ -49,6 +49,20 @@ def require_demo_write_confirmation(
     )
 
 
+def require_demo_load_confirmation(
+    engine: AsyncEngine,
+    *,
+    confirmed: bool,
+) -> None:
+    """Protect the pool demo against unconfirmed concurrent DB load."""
+    require_demo_confirmation(
+        engine,
+        confirmed=confirmed,
+        operation="The connection-pool demo opens concurrent PostgreSQL connections",
+        confirmation_flag="--confirm-load",
+    )
+
+
 def require_demo_confirmation(
     engine: AsyncEngine,
     *,

@@ -14,6 +14,7 @@ from app.ai.schemas import RunScenario, RunStatus
 from app.ai.tools.index_scan import IndexScanTools
 from demos.cases.index_scan import IndexScanConfig, run_index_scan
 from demos.cases.race_condition import RaceConditionConfig, run_race_condition
+from demos.cases.pool_exhaustion import PoolExhaustionConfig, run_pool_exhaustion
 from demos.common.database import DemoSafetyError
 
 DEFAULT_RESULTS_DIR = Path(__file__).resolve().parent / "results"
@@ -99,6 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Allow the demo to create, update, and delete one task fixture.",
     )
 
+    pool_parser = subparsers.add_parser(
+        "pool-exhaustion",
+        help="Compare undersized and correctly sized SQLAlchemy pools.",
+    )
+    pool_parser.add_argument("--concurrency", type=positive_int, default=5)
+    pool_parser.add_argument("--hold-seconds", type=positive_float, default=0.35)
+    pool_parser.add_argument("--pool-timeout", type=positive_float, default=0.20)
+    pool_parser.add_argument("--before-pool-size", type=positive_int, default=2)
+    pool_parser.add_argument("--after-pool-size", type=positive_int, default=5)
+    pool_parser.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    pool_parser.add_argument("--confirm-load", action="store_true")
+
     inspect_parser = subparsers.add_parser(
         "inspect-index-run",
         help="Validate one index-scan run and print grounded tool outputs.",
@@ -126,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ai_parser.add_argument(
         "--scenario",
-        choices=("index-scan", "race-condition"),
+        choices=("index-scan", "race-condition", "pool-exhaustion"),
         default="index-scan",
         help="Scenario used when --run-id is omitted.",
     )
@@ -139,6 +152,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--project-root", type=Path, default=Path("."),
         help="TaskGraph project root (default: current directory).",
     )
+    eval_parser = subparsers.add_parser(
+        "ai-evals",
+        help="Run 20 offline grounded-agent regression evaluations.",
+    )
+    eval_parser.add_argument(
+        "--dataset", type=Path, default=Path("demos/evals/incident_cases.json")
+    )
+    eval_parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    eval_parser.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_DIR)
     ai_parser.add_argument(
         "--question",
         default=None,
@@ -207,6 +229,31 @@ async def run_race_condition_command(args: argparse.Namespace) -> int:
     return 0 if result["status"] == "passed" else 1
 
 
+async def run_pool_exhaustion_command(args: argparse.Namespace) -> int:
+    from app.db.session import engine
+
+    config = PoolExhaustionConfig(
+        concurrency=args.concurrency,
+        hold_seconds=args.hold_seconds,
+        pool_timeout_seconds=args.pool_timeout,
+        before_pool_size=args.before_pool_size,
+        after_pool_size=args.after_pool_size,
+        output_dir=args.output_dir,
+        confirm_load=args.confirm_load,
+    )
+    try:
+        result = await run_pool_exhaustion(engine, config)
+    finally:
+        await engine.dispose()
+    print()
+    print(f"Before pool timeouts: {result['summary']['before']['pool_timeouts']}")
+    print(f"After pool timeouts: {result['summary']['after']['pool_timeouts']}")
+    print(f"Result: {result['status'].upper()}")
+    print(f"Run ID: {result['run_id']}")
+    print(f"Report: {result['report_path']}")
+    return 0 if result["status"] == "passed" else 1
+
+
 async def run_inspect_index_run_command(args: argparse.Namespace) -> int:
     """Exercise the future agent tools without making any LLM call."""
     repository = FileRunRepository(args.results_dir)
@@ -259,10 +306,18 @@ async def run_ai_incident_analyst_command(args: argparse.Namespace) -> int:
                 or (
                     "Почему возник lost update и как optimistic locking с version predicate обнаруживает конфликт?"
                     if args.scenario == "race-condition"
-                    else "Почему запрос выполнялся медленно, что было причиной и какое изменение исправило проблему?"
+                    else (
+                        "Почему возникли connection pool timeout и как изменение pool_size устранило ошибки?"
+                        if args.scenario == "pool-exhaustion"
+                        else "Почему запрос выполнялся медленно, что было причиной и какое изменение исправило проблему?"
+                    )
                 )
             ),
-            scenario=(RunScenario.RACE_CONDITION if args.scenario == "race-condition" else RunScenario.INDEX_SCAN),
+            scenario={
+                "index-scan": RunScenario.INDEX_SCAN,
+                "race-condition": RunScenario.RACE_CONDITION,
+                "pool-exhaustion": RunScenario.CONNECTION_POOL_EXHAUSTION,
+            }[args.scenario],
         ),
     )
     print()
@@ -296,14 +351,37 @@ async def run_rag_index_command(args: argparse.Namespace) -> int:
     return 0
 
 
+async def run_ai_evals_command(args: argparse.Namespace) -> int:
+    from demos.cases.ai_evals import AIEvalConfig, run_ai_evals
+
+    result = await run_ai_evals(
+        AIEvalConfig(
+            dataset_path=args.dataset,
+            results_dir=args.results_dir,
+            output_dir=args.output_dir,
+        )
+    )
+    metrics = result["metrics"]
+    print("TaskGraph AI offline evals")
+    print(f"Cases: {metrics['total_cases']}")
+    print(f"Tool selection accuracy: {metrics['tool_selection_accuracy_percent']}%")
+    print(f"Completion rate: {metrics['completion_rate_percent']}%")
+    print(f"Grounding rate: {metrics['grounding_rate_percent']}%")
+    print(f"Result: {'PASSED' if result['passed'] else 'FAILED'}")
+    print(f"Report: {result['report_path']}")
+    return 0 if result["passed"] else 1
+
+
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Dispatch one parsed demo command with consistent error handling."""
     command = {
         "index-scan": run_index_scan_command,
         "race-condition": run_race_condition_command,
+        "pool-exhaustion": run_pool_exhaustion_command,
         "inspect-index-run": run_inspect_index_run_command,
         "ai-incident-analyst": run_ai_incident_analyst_command,
         "rag-index": run_rag_index_command,
+        "ai-evals": run_ai_evals_command,
     }.get(args.case)
 
     if command is None:

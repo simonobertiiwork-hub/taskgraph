@@ -124,6 +124,26 @@ class RaceConditionMetrics(StrictModel):
     evidence: list[EvidenceRef]
 
 
+class PoolExhaustionMetrics(StrictModel):
+    """Verified before/after outcomes of the connection-pool demonstration."""
+
+    schema_version: Literal[RUN_SCHEMA_VERSION] = RUN_SCHEMA_VERSION
+    run_id: UUID
+    scenario: Literal[RunScenario.CONNECTION_POOL_EXHAUSTION] = RunScenario.CONNECTION_POOL_EXHAUSTION
+    status: RunStatus
+    concurrency: int = Field(gt=0)
+    before_pool_size: int = Field(gt=0)
+    after_pool_size: int = Field(gt=0)
+    before_completed_requests: int = Field(ge=0)
+    after_completed_requests: int = Field(ge=0)
+    before_pool_timeouts: int = Field(ge=0)
+    after_pool_timeouts: int = Field(ge=0)
+    before_failure_rate_percent: float = Field(ge=0, le=100)
+    after_failure_rate_percent: float = Field(ge=0, le=100)
+    timeouts_removed: int = Field(ge=0)
+    evidence: list[EvidenceRef]
+
+
 class LLMUsage(StrictModel):
     """Token counts reported by an OpenAI-compatible provider."""
 
@@ -180,6 +200,17 @@ class RaceConditionMeasuredResult(StrictModel):
     optimistic_final_version: int = Field(gt=0)
 
 
+class PoolExhaustionMeasuredResult(StrictModel):
+    """Pool result copied from verified demonstration artifacts."""
+
+    statement: SupportedStatement
+    before_pool_timeouts: int = Field(ge=0)
+    after_pool_timeouts: int = Field(ge=0)
+    before_completed_requests: int = Field(ge=0)
+    after_completed_requests: int = Field(ge=0)
+    timeouts_removed: int = Field(ge=0)
+
+
 class DocumentCitation(StrictModel):
     """One documentation chunk returned by the RAG retriever."""
 
@@ -199,7 +230,7 @@ class IncidentReportDraft(StrictModel):
     problem: SupportedStatement
     root_cause: SupportedStatement
     applied_fix: SupportedStatement
-    result: IndexScanMeasuredResult | RaceConditionMeasuredResult
+    result: IndexScanMeasuredResult | RaceConditionMeasuredResult | PoolExhaustionMeasuredResult
     sources: list[DocumentCitation] = Field(default_factory=list, max_length=5)
     limitations: list[str] = Field(default_factory=list, max_length=5)
 
@@ -208,6 +239,7 @@ class IncidentReportDraft(StrictModel):
         expected = {
             RunScenario.INDEX_SCAN: IndexScanMeasuredResult,
             RunScenario.RACE_CONDITION: RaceConditionMeasuredResult,
+            RunScenario.CONNECTION_POOL_EXHAUSTION: PoolExhaustionMeasuredResult,
         }.get(self.scenario)
         if expected is None or not isinstance(self.result, expected):
             raise ValueError("result payload does not match report scenario")

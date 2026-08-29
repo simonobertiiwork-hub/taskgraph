@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.ai.errors import ToolPlanError
 from app.ai.tools.index_scan import IndexScanTools
 from app.ai.tools.race_condition import RaceConditionTools
+from app.ai.tools.pool_exhaustion import PoolExhaustionTools
 
 
 class RunIdInput(BaseModel):
@@ -67,6 +68,7 @@ class LangChainToolRegistry:
 def build_index_tool_registry(
     index_tools: IndexScanTools,
     race_tools: RaceConditionTools | None = None,
+    pool_tools: PoolExhaustionTools | None = None,
 ) -> LangChainToolRegistry:
     """Create two real LangChain tools over verified TaskGraph artifacts."""
     from langchain_core.tools import StructuredTool
@@ -111,6 +113,22 @@ def build_index_tool_registry(
                 description=(
                     "Get verified lost-update, pessimistic-lock wait and optimistic "
                     "version-conflict evidence for a TaskGraph race-condition run."
+                ),
+                args_schema=RunIdInput,
+            )
+        )
+    if pool_tools is not None:
+        def get_pool_metrics(run_id: UUID) -> dict[str, Any]:
+            """Return verified before/after connection-pool metrics."""
+            return pool_tools.get_pool_metrics(run_id).model_dump(mode="json")
+
+        tools.append(
+            StructuredTool.from_function(
+                func=get_pool_metrics,
+                name="get_pool_metrics",
+                description=(
+                    "Get verified pool sizes, completed requests, timeout counts, "
+                    "failure rates and evidence for a pool-exhaustion run."
                 ),
                 args_schema=RunIdInput,
             )

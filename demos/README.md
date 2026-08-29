@@ -154,3 +154,20 @@ docker compose exec app python -m demos ai-incident-analyst --scenario race-cond
 The workflow calls `get_concurrency_metrics`, retrieves up to five relevant
 documentation chunks, and writes their path, heading and cosine score into the
 report. The final technical claims still come only from verified run evidence.
+
+## Step 4: Connection Pool Exhaustion + 20 offline evals
+
+```bash
+docker compose exec app python -m demos pool-exhaustion --confirm-load
+docker compose exec app python -m demos rag-index
+docker compose exec app python -m demos ai-incident-analyst --scenario pool-exhaustion
+docker compose exec app python -m demos ai-evals
+```
+
+The pool demo runs identical controlled PostgreSQL work through undersized and
+correctly sized SQLAlchemy pools. It requires real pool timeouts before the
+change and zero after it, without mutating application tables.
+
+The 20-case dataset covers all three scenarios and prompt-injection-shaped
+questions. Offline evals report tool-selection accuracy, completion rate and
+evidence-grounding rate using `StubLLMProvider`; they never call Ollama.

@@ -81,10 +81,14 @@ class IncidentWorkflow:
             run = self.repository.get(request.run_id)
         except RunRepositoryError as exc:
             return {"fatal_error": str(exc), "validation_errors": [str(exc)]}
-        if run.manifest.scenario not in {RunScenario.INDEX_SCAN, RunScenario.RACE_CONDITION}:
+        if run.manifest.scenario not in {
+            RunScenario.INDEX_SCAN,
+            RunScenario.RACE_CONDITION,
+            RunScenario.CONNECTION_POOL_EXHAUSTION,
+        }:
             message = (
                 f"Run {request.run_id} is {run.manifest.scenario.value}; "
-                "this workflow supports index_scan and race_condition"
+                "this workflow supports index_scan, race_condition and connection_pool_exhaustion"
             )
             return {"fatal_error": message, "validation_errors": [message]}
         return {

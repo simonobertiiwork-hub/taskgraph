@@ -10,6 +10,7 @@ from app.ai.schemas import (
     IncidentAnalysisRequest,
     IncidentReportDraft,
     IndexScanMeasuredResult,
+    PoolExhaustionMeasuredResult,
     RaceConditionMeasuredResult,
     RunScenario,
     SupportedStatement,
@@ -37,6 +38,8 @@ def build_grounded_incident_report(
     documents = retrieved_documents or []
     if "get_concurrency_metrics" in tool_results:
         return _build_race_report(request, tool_results["get_concurrency_metrics"], documents)
+    if "get_pool_metrics" in tool_results:
+        return _build_pool_report(request, tool_results["get_pool_metrics"], documents)
     try:
         summary = tool_results["get_run_summary"]
         plans = tool_results["get_query_plan"]
@@ -130,6 +133,64 @@ def _build_race_report(request: IncidentAnalysisRequest, metrics: dict[str, Any]
             stale_writer_rows_updated=stale_rows,
             optimistic_conflict_detected=conflict,
             optimistic_final_version=version,
+        ),
+        sources=[DocumentCitation(**item.citation_payload()) for item in documents[:5]],
+        limitations=limitations,
+    )
+
+
+def _build_pool_report(request: IncidentAnalysisRequest, metrics: dict[str, Any], documents: list[Any]) -> IncidentReportDraft:
+    try:
+        concurrency = int(metrics["concurrency"])
+        before_size = int(metrics["before_pool_size"])
+        after_size = int(metrics["after_pool_size"])
+        before_completed = int(metrics["before_completed_requests"])
+        after_completed = int(metrics["after_completed_requests"])
+        before_timeouts = int(metrics["before_pool_timeouts"])
+        after_timeouts = int(metrics["after_pool_timeouts"])
+        removed = int(metrics["timeouts_removed"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise AIIncidentError(f"Pool tool result cannot build a report: {exc}") from exc
+    concurrency_id = _evidence_id(metrics, "/before/concurrency")
+    before_size_id = _evidence_id(metrics, "/before/pool_size")
+    after_size_id = _evidence_id(metrics, "/after/pool_size")
+    before_completed_id = _evidence_id(metrics, "/before/completed_requests")
+    after_completed_id = _evidence_id(metrics, "/after/completed_requests")
+    before_timeouts_id = _evidence_id(metrics, "/before/pool_timeouts")
+    after_timeouts_id = _evidence_id(metrics, "/after/pool_timeouts")
+    removed_id = _evidence_id(metrics, "/comparison/timeouts_removed")
+    limitations = ["Результат получен в локальном воспроизводимом сценарии с контролируемым числом соединений."]
+    if not documents:
+        limitations.append("RAG не вернул документацию выше порога релевантности.")
+    return IncidentReportDraft(
+        run_id=request.run_id,
+        scenario=RunScenario.CONNECTION_POOL_EXHAUSTION,
+        summary=SupportedStatement(
+            text=f"При {concurrency} конкурентных запросах малый пул вызвал {before_timeouts} timeout, после увеличения пула осталось {after_timeouts}.",
+            evidence_ids=[concurrency_id, before_timeouts_id, after_timeouts_id],
+        ),
+        problem=SupportedStatement(
+            text=f"Пул из {before_size} соединений не обслужил одинаковую конкурентную нагрузку без ожидания сверх pool_timeout.",
+            evidence_ids=[before_size_id, concurrency_id, before_timeouts_id],
+        ),
+        root_cause=SupportedStatement(
+            text="Доступная ёмкость пула была меньше числа одновременно удерживаемых соединений, а max_overflow был равен нулю.",
+            evidence_ids=[before_size_id, concurrency_id],
+        ),
+        applied_fix=SupportedStatement(
+            text=f"Для повторного измерения pool_size увеличен с {before_size} до {after_size} при неизменной нагрузке.",
+            evidence_ids=[before_size_id, after_size_id, concurrency_id],
+        ),
+        result=PoolExhaustionMeasuredResult(
+            statement=SupportedStatement(
+                text=f"Число завершённых запросов выросло с {before_completed} до {after_completed}, устранено {removed} pool timeout.",
+                evidence_ids=[before_completed_id, after_completed_id, removed_id, after_timeouts_id],
+            ),
+            before_pool_timeouts=before_timeouts,
+            after_pool_timeouts=after_timeouts,
+            before_completed_requests=before_completed,
+            after_completed_requests=after_completed,
+            timeouts_removed=removed,
         ),
         sources=[DocumentCitation(**item.citation_payload()) for item in documents[:5]],
         limitations=limitations,

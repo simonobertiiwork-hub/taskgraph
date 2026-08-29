@@ -21,6 +21,7 @@ from app.ai.schemas import (
 from app.ai.tool_registry import build_index_tool_registry
 from app.ai.tools.index_scan import IndexScanTools
 from app.ai.tools.race_condition import RaceConditionTools
+from app.ai.tools.pool_exhaustion import PoolExhaustionTools
 from app.ai.rag.embeddings import HashEmbeddingProvider
 from app.ai.rag.repository import PgVectorDocumentRepository
 from app.ai.rag.service import RAGService
@@ -63,12 +64,19 @@ Status: **FAILED**
     limitations = "\n".join(f"- {item}" for item in report.limitations) or "- None"
     if report.scenario == RunScenario.INDEX_SCAN:
         measured = f"- Before: `{report.result.before_ms}` ms\n- After: `{report.result.after_ms}` ms\n- Speedup: `{report.result.speedup}`x"
-    else:
+    elif report.scenario == RunScenario.RACE_CONDITION:
         measured = (
             f"- Lost update reproduced: `{report.result.lost_update_detected}`\n"
             f"- Stale writer rows updated: `{report.result.stale_writer_rows_updated}`\n"
             f"- Optimistic conflict detected: `{report.result.optimistic_conflict_detected}`\n"
             f"- Final version: `{report.result.optimistic_final_version}`"
+        )
+    else:
+        measured = (
+            f"- Before pool timeouts: `{report.result.before_pool_timeouts}`\n"
+            f"- After pool timeouts: `{report.result.after_pool_timeouts}`\n"
+            f"- Completed requests: `{report.result.before_completed_requests}` -> `{report.result.after_completed_requests}`\n"
+            f"- Timeouts removed: `{report.result.timeouts_removed}`"
         )
     sources = "\n".join(
         f"- `{item.source_path}` — {item.section} (score `{item.score:.3f}`)"
@@ -165,7 +173,8 @@ async def run_ai_incident_analyst(
         )
         index_tools = IndexScanTools(repository)
         race_tools = RaceConditionTools(repository)
-        tool_registry = build_index_tool_registry(index_tools, race_tools)
+        pool_tools = PoolExhaustionTools(repository)
+        tool_registry = build_index_tool_registry(index_tools, race_tools, pool_tools)
         from app.db.session import AsyncSessionLocal
         retriever = RAGService(
             PgVectorDocumentRepository(AsyncSessionLocal),

@@ -168,3 +168,61 @@ def write_race_run(root: Path) -> DemoRunContext:
         artifact_names=("metadata.json", "summary.json", "report.md"),
     )
     return context
+
+
+def write_pool_run(root: Path) -> DemoRunContext:
+    """Write a compact, internally consistent pool-exhaustion run."""
+    context = create_run_context(root, "connection_pool_exhaustion")
+    metadata = {
+        "schema_version": 1,
+        "run_id": str(context.run_id),
+        "case": "connection_pool_exhaustion",
+    }
+    before = {
+        "pool_size": 2,
+        "max_overflow": 0,
+        "pool_timeout_seconds": 0.2,
+        "concurrency": 5,
+        "hold_seconds": 0.35,
+        "completed_requests": 2,
+        "pool_timeouts": 3,
+        "failure_rate_percent": 60.0,
+        "elapsed_ms": 360.0,
+        "requests": [],
+    }
+    after = {
+        **before,
+        "pool_size": 5,
+        "completed_requests": 5,
+        "pool_timeouts": 0,
+        "failure_rate_percent": 0.0,
+    }
+    summary = {
+        "status": "passed",
+        "before": {key: value for key, value in before.items() if key != "requests"},
+        "after": {key: value for key, value in after.items() if key != "requests"},
+        "comparison": {
+            "timeouts_removed": 3,
+            "completed_requests_added": 3,
+            "failure_rate_reduction_percentage_points": 60.0,
+        },
+        "verification": {
+            "before_pool_saturated": True,
+            "before_capacity_was_lower_than_concurrency": True,
+            "after_used_identical_load": True,
+            "after_pool_matches_concurrency": True,
+            "after_has_no_pool_timeouts": True,
+            "completed_requests_increased": True,
+        },
+    }
+    write_json(context.result_dir / "metadata.json", metadata)
+    write_json(context.result_dir / "before.json", before)
+    write_json(context.result_dir / "after.json", after)
+    write_json(context.result_dir / "summary.json", summary)
+    write_text(context.result_dir / "report.md", "# Test pool report")
+    finalize_run(
+        context,
+        status="passed",
+        artifact_names=("metadata.json", "before.json", "after.json", "summary.json", "report.md"),
+    )
+    return context

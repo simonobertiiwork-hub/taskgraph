@@ -1,5 +1,30 @@
 # Case #2: Connection Pool Exhaustion
 
+## Reproducible agent demo
+
+The current code-first demonstration uses two temporary SQLAlchemy async
+engines and the same controlled PostgreSQL workload in both phases:
+
+- concurrency: 5;
+- each connection runs `SELECT pg_sleep(0.35)`;
+- `max_overflow=0`;
+- `pool_timeout=0.20` seconds;
+- before: `pool_size=2`;
+- after: `pool_size=5`.
+
+The before phase must produce real `sqlalchemy.exc.TimeoutError` outcomes. The
+after phase must complete the same five requests without a pool timeout. Every
+request result, measured wait and verification check is written below
+`demos/results/connection_pool_exhaustion/` and protected by manifest checksums.
+
+```bash
+docker compose exec app python -m demos pool-exhaustion --confirm-load
+docker compose exec app python -m demos ai-incident-analyst --scenario pool-exhaustion
+```
+
+The historical k6 experiment is retained below as engineering context; its
+numbers are not substituted for the current reproducible run.
+
 ## Problem
 
 Database connection pool became saturated under load.

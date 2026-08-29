@@ -5,11 +5,12 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from app.ai.schemas import IncidentAnalysisRequest, IncidentReportDraft, IndexScanMeasuredResult, RaceConditionMeasuredResult, RunScenario
+from app.ai.schemas import IncidentAnalysisRequest, IncidentReportDraft, IndexScanMeasuredResult, PoolExhaustionMeasuredResult, RaceConditionMeasuredResult, RunScenario
 
 REQUIRED_TOOLS_BY_SCENARIO = {
     RunScenario.INDEX_SCAN: {"get_run_summary", "get_query_plan"},
     RunScenario.RACE_CONDITION: {"get_concurrency_metrics"},
+    RunScenario.CONNECTION_POOL_EXHAUSTION: {"get_pool_metrics"},
 }
 REQUIRED_TOOLS = REQUIRED_TOOLS_BY_SCENARIO[RunScenario.INDEX_SCAN]
 
@@ -78,6 +79,17 @@ def validate_incident_report(
     elif report.scenario == RunScenario.RACE_CONDITION and isinstance(report.result, RaceConditionMeasuredResult):
         source = tool_results["get_concurrency_metrics"]
         for name in ("lost_update_detected", "stale_writer_rows_updated", "optimistic_conflict_detected", "optimistic_final_version"):
+            if getattr(report.result, name) != source[name]:
+                errors.append(f"result.{name} must equal tool value")
+    elif report.scenario == RunScenario.CONNECTION_POOL_EXHAUSTION and isinstance(report.result, PoolExhaustionMeasuredResult):
+        source = tool_results["get_pool_metrics"]
+        for name in (
+            "before_pool_timeouts",
+            "after_pool_timeouts",
+            "before_completed_requests",
+            "after_completed_requests",
+            "timeouts_removed",
+        ):
             if getattr(report.result, name) != source[name]:
                 errors.append(f"result.{name} must equal tool value")
     else:
