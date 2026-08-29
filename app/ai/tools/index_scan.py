@@ -281,6 +281,12 @@ class IndexScanTools:
                 index_definition,
             ),
             _evidence(run, "summary.json", "/before/node_types", before_nodes),
+            _evidence(
+                run,
+                "summary.json",
+                "/before/index_names",
+                before_indexes,
+            ),
             _evidence(run, "summary.json", "/after/node_types", after_nodes),
             _evidence(run, "summary.json", "/after/index_names", after_indexes),
         ]

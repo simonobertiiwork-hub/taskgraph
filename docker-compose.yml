@@ -36,6 +36,20 @@ services:
       retries: 3
       start_period: 10s
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: taskgraph_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   celery_worker:
     build: .
     container_name: taskgraph_celery_worker
@@ -110,3 +124,4 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  ollama_data:

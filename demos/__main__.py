@@ -115,6 +115,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="Specific run UUID; defaults to the latest index-scan run.",
     )
 
+    ai_parser = subparsers.add_parser(
+        "ai-incident-analyst",
+        help="Analyze one verified run through LangGraph and a live LLM.",
+    )
+    ai_parser.add_argument(
+        "--run-id",
+        type=UUID,
+        help="Specific run UUID; defaults to the latest index-scan run.",
+    )
+    ai_parser.add_argument(
+        "--question",
+        default=(
+            "Почему запрос выполнялся медленно, что было причиной и какое "
+            "изменение исправило проблему?"
+        ),
+        help="Technical question passed to the agent as untrusted data.",
+    )
+    ai_parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=DEFAULT_RESULTS_DIR,
+        help="Root containing versioned TaskGraph run manifests.",
+    )
+    ai_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_RESULTS_DIR,
+        help="Root for generated AI analysis artifacts.",
+    )
+
     return parser
 
 
@@ -198,12 +228,37 @@ async def run_inspect_index_run_command(args: argparse.Namespace) -> int:
     return 0 if passed else 1
 
 
+async def run_ai_incident_analyst_command(args: argparse.Namespace) -> int:
+    """Run the live-provider LangGraph case without importing it for other demos."""
+    from app.core.config import settings
+    from demos.cases.ai_incident_analyst import (
+        AIIncidentDemoConfig,
+        run_ai_incident_analyst,
+    )
+
+    result = await run_ai_incident_analyst(
+        settings,
+        AIIncidentDemoConfig(
+            results_dir=args.results_dir,
+            output_dir=args.output_dir,
+            run_id=args.run_id,
+            question=args.question,
+        ),
+    )
+    print()
+    print(f"Result: {'PASSED' if result['passed'] else 'FAILED'}")
+    print(f"Analysis ID: {result['analysis_id']}")
+    print(f"Report: {result['report_path']}")
+    return 0 if result["passed"] else 1
+
+
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Dispatch one parsed demo command with consistent error handling."""
     command = {
         "index-scan": run_index_scan_command,
         "race-condition": run_race_condition_command,
         "inspect-index-run": run_inspect_index_run_command,
+        "ai-incident-analyst": run_ai_incident_analyst_command,
     }.get(args.case)
 
     if command is None:

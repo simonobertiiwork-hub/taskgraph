@@ -101,3 +101,35 @@ Every run creates a UTC-stamped directory under
 `demos/results/race_condition/` with PostgreSQL metadata, machine-readable
 verification checks, measured lock-wait time, and a generated Markdown report.
 New runs use the same versioned manifest contract and receive their own UUID.
+
+## AI Incident Analyst: LangGraph + real tool calling
+
+Step 2 analyzes the latest versioned `index_scan` run through a bounded
+LangGraph workflow. Start the local OpenAI-compatible provider and download the
+small demonstration model once:
+
+```bash
+docker compose up -d ollama app
+docker compose exec ollama ollama pull qwen2.5:1.5b
+```
+
+Run the agent:
+
+```bash
+docker compose exec app python -m demos ai-incident-analyst
+```
+
+The workflow:
+
+1. validates the requested `run_id`;
+2. asks the model to select allowlisted LangChain tools;
+3. rejects unknown tools and attempts to access another run;
+4. executes `get_run_summary` and `get_query_plan` over verified artifacts;
+5. requests a JSON-Schema constrained technical report;
+6. validates every evidence identifier and numeric value;
+7. allows at most one repair call for a rejected report.
+
+Every run writes `request.json`, `tool_calls.json`, `provider_calls.json`,
+`report.json`, and `report.md` below
+`demos/results/ai_incident_analyst/`. Ordinary tests and CI use
+`StubLLMProvider` and never contact Ollama.
