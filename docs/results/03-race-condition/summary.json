@@ -1,0 +1,89 @@
+{
+  "status": "passed",
+  "scenarios": {
+    "last_write_wins": {
+      "strategy": "last_write_wins",
+      "transaction_a_backend_pid": 22030,
+      "transaction_b_backend_pid": 22031,
+      "transaction_a_read": {
+        "title": "race demo original",
+        "version": 1
+      },
+      "transaction_b_read": {
+        "title": "race demo original",
+        "version": 1
+      },
+      "transaction_a_write": "race demo task A",
+      "transaction_b_write": "race demo task B",
+      "final": {
+        "title": "race demo task B",
+        "version": 1
+      }
+    },
+    "pessimistic_lock": {
+      "strategy": "pessimistic_lock",
+      "configured_hold_seconds": 1.0,
+      "transaction_a": {
+        "backend_pid": 22031,
+        "observed": {
+          "title": "race demo original",
+          "version": 1
+        },
+        "write": "race demo task A"
+      },
+      "transaction_b": {
+        "backend_pid": 22030,
+        "observed_after_lock": {
+          "title": "race demo task A",
+          "version": 1
+        },
+        "write": "race demo task B",
+        "lock_wait_seconds": 1.0095987159993456
+      },
+      "final": {
+        "title": "race demo task B",
+        "version": 1
+      }
+    },
+    "optimistic_lock": {
+      "strategy": "optimistic_lock",
+      "transaction_a_backend_pid": 22031,
+      "transaction_b_backend_pid": 22030,
+      "transaction_a_read": {
+        "title": "race demo original",
+        "version": 1
+      },
+      "transaction_b_read": {
+        "title": "race demo original",
+        "version": 1
+      },
+      "transaction_a_rows_updated": 1,
+      "transaction_b_rows_updated": 0,
+      "transaction_b_conflict_detected": true,
+      "final": {
+        "title": "race demo task A",
+        "version": 2
+      }
+    }
+  },
+  "verification": {
+    "last_write_wins": {
+      "transactions_used_distinct_connections": true,
+      "both_transactions_read_original": true,
+      "first_write_was_lost": true
+    },
+    "pessimistic_lock": {
+      "transactions_used_distinct_connections": true,
+      "second_writer_observed_first_commit": true,
+      "second_writer_waited_for_lock": true,
+      "writes_completed_in_lock_order": true
+    },
+    "optimistic_lock": {
+      "transactions_used_distinct_connections": true,
+      "first_writer_updated_one_row": true,
+      "stale_second_writer_updated_no_rows": true,
+      "conflict_was_detected": true,
+      "first_write_and_incremented_version_remain": true
+    }
+  }
+}

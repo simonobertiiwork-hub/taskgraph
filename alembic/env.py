@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.models.task import Task  # для автогенерации
 from app.models.graph import GraphNode, GraphEdge  # для автогенерации
+from app.models.ai_document import AIDocumentChunk  # noqa: F401
 
 # конфиг из alembic.ini
 config = context.config

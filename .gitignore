@@ -56,6 +56,10 @@ Thumbs.db
 
 *.tmp
 
+# Local demo measurements
+demos/results/*
+!demos/results/.gitkeep
+
 # ======================
 # Build artifacts
 # ======================

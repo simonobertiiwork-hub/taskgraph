@@ -1,3 +1,4 @@
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,9 +12,27 @@ class Settings(BaseSettings):
     pool_size: int = 5
     max_overflow: int = 0
 
+    llm_provider: str = "ollama"
+    llm_base_url: str = "http://ollama:11434/v1"
+    llm_api_key: SecretStr | None = SecretStr("ollama")
+    llm_model: str = "qwen2.5:1.5b"
+    llm_timeout_seconds: float = Field(default=180.0, gt=0, le=300)
+    llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_retry_backoff_seconds: float = Field(default=0.25, ge=0, le=5)
+    llm_trust_env: bool = False
+
+    embedding_provider: str = "hash"
+    embedding_model: str = "taskgraph-hash-v1"
+    embedding_dimensions: int = Field(default=768, ge=64, le=4096)
+    rag_top_k: int = Field(default=5, ge=1, le=20)
+    rag_score_threshold: float = Field(default=0.08, ge=0, le=1)
+
+    kafka_bootstrap_servers: str = "kafka:29092"
+    kafka_analysis_topic: str = "taskgraph.ai.incident.completed"
+
     model_config = SettingsConfigDict(
         env_file=".env",
-        extra="ignore"
+        extra="ignore",
     )
 
 

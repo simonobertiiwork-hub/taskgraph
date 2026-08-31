@@ -35,3 +35,7 @@ jobs:
       - name: Run pytest
         run: |
           python -m pytest tests -v
+
+      - name: Run offline AI regression gate
+        run: |
+          python -m pytest tests/unit/test_ai_evals.py tests/unit/test_ai_mcp.py -v

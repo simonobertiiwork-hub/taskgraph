@@ -46,6 +46,10 @@ jobs:
         run: |
           python -m pytest tests -v
 
+      - name: Run offline AI regression gate
+        run: |
+          python -m pytest tests/unit/test_ai_evals.py tests/unit/test_ai_mcp.py -v
+
   docker-delivery:
     name: Build and publish Docker image
     runs-on: ubuntu-latest

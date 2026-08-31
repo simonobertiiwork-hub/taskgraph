@@ -5,7 +5,7 @@ Backend research project focused on reproducing and analyzing production-like ba
 
 ## Stack
 
-Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • Kubernetes • Pytest • GitHub Actions • CI/CD • k6 • Prometheus • Grafana
+Python 3.12 • FastAPI • PostgreSQL/pgvector • SQLAlchemy 2.0 (async) • LangGraph • LangChain tools • Ollama • MCP • Apache Kafka • Prometheus • Docker Compose • Pytest • GitHub Actions
 
 ## Goal
 
@@ -18,6 +18,43 @@ TaskGraph reproduces production-like backend scenarios to investigate:
 
 Project philosophy:
 Reproduce → Measure → Understand → Fix → Verify
+
+## AI Incident Analyst
+
+The AI subsystem analyzes only versioned, checksum-verified demo evidence. A
+local Ollama model selects an allowlisted tool; the final technical report is
+assembled and validated deterministically, so a small model cannot invent
+measurements or return an invalid report.
+
+Implemented:
+
+- LangGraph workflow with bounded planning and repair routes;
+- four read-only evidence tools for index, race-condition, and pool incidents;
+- pgvector RAG over project documentation with incremental reindexing;
+- real MCP stdio server for external tool clients;
+- versioned Kafka completion events enabled only by an explicit flag;
+- Prometheus metrics for latency, tool calls, validation and delivery;
+- 20 deterministic offline eval cases executed in CI without Ollama or network.
+
+```mermaid
+flowchart TD
+    A["Verified run artifacts"] --> B["Allowlisted tools"]
+    D["pgvector documentation"] --> C["LangGraph analyst"]
+    B --> C
+    C --> E["Validated report"]
+    E --> F["Kafka event and Prometheus metrics"]
+    B --> G["MCP stdio server"]
+```
+
+Acceptance run after the three backend scenarios and one AI analysis exist:
+
+```bash
+docker compose exec app python -m demos final-smoke
+```
+
+Add `--publish-kafka` to verify real delivery to the Compose Kafka broker. The
+ordinary test suite and offline evals always use `StubLLMProvider` and never
+contact Ollama.
 
 ## Architecture
 
@@ -41,34 +78,31 @@ FastAPI
 
 Seq Scan vs Index Scan.
 
-Result:
-13.9 ms → 0.07 ms
+Verified local run:
+- PostgreSQL 15.18
+- 200,000 rows
+- median of 5 measured executions
+- 13.505 ms → 0.016 ms
+- Seq Scan → Index Scan
+- shared buffer hits: 1667 → 4
 
 Investigation:
 - selectivity
-- EXPLAIN ANALYZE
+- EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+
+Reproduce:
+`docker compose exec app python -m demos index-scan --confirm-reset`
 
 ---
 
 2. Connection Pool Exhaustion
 
-Before:
-pool_size=5
-max_overflow=0
+The reproducible demo applies five concurrent requests to an undersized pool,
+then repeats the identical load after matching pool capacity to concurrency.
+The verified result records three pool timeouts before and zero after.
 
-After:
-pool_size=20
-max_overflow=20
-
-Load testing:
-- k6
-- Prometheus
-- Grafana
-
-Result:
-p95: 35s → 29s
-
-failures: 76% → 0%
+Reproduce:
+`docker compose exec app python -m demos pool-exhaustion --confirm-load`
 
 Key finding:
 async != infinite parallelism
@@ -77,16 +111,24 @@ async != infinite parallelism
 
 3. Race Condition
 
-Lost Update reproduction.
+Concurrent update investigation.
 
 Implemented:
 - Last Write Wins
 - Pessimistic Locking
 - Optimistic Locking
 
-Result:
-- concurrent updates → 409 Conflict
-- prevents silent data loss
+Verified local run:
+- PostgreSQL 15.18 with `read committed` isolation
+- two distinct PostgreSQL connections per strategy
+- Last Write Wins reproduced a lost update
+- `SELECT FOR UPDATE` lock wait: 1.009599 s
+- stale version update affected 0 rows
+- accepted update incremented version from 1 to 2
+- API version conflict maps to HTTP 409
+
+Reproduce:
+`docker compose exec app python -m demos race-condition --confirm-write`
 
 ---
 
@@ -203,6 +245,7 @@ GitHub Actions pipeline automatically:
 - installs project dependencies
 - creates environment variables for tests
 - runs pytest test suite
+- runs the 20-case offline AI evaluation and MCP transport gate
 - builds Docker image
 - publishes Docker image to GitHub Container Registry (GHCR)
 
@@ -223,7 +266,29 @@ Performance:
 - connection pool investigation
 
 Run:
-docker compose run --rm app pytest tests/ -v
+`docker compose exec app python -m pytest -q`
+
+---
+
+## Reproducible Demos
+
+Engineering cases are executed from code and store raw measurements together
+with generated reports.
+
+Run the PostgreSQL index case:
+
+```bash
+docker compose exec app python -m demos index-scan --confirm-reset
+```
+
+Run the concurrency case:
+
+```bash
+docker compose exec app python -m demos race-condition --confirm-write
+```
+
+Detailed commands and result-file descriptions:
+`demos/README.md`
 
 ---
 
