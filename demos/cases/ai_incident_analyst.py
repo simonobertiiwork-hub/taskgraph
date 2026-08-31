@@ -44,6 +44,7 @@ class AIIncidentDemoConfig:
     run_id: UUID | None = None
     question: str = DEFAULT_QUESTION
     scenario: RunScenario = RunScenario.INDEX_SCAN
+    publish_kafka: bool = False
 
 
 def _render_report(response: IncidentAnalysisResponse) -> str:
@@ -191,6 +192,25 @@ async def run_ai_incident_analyst(
         )
         response = await workflow.analyze(request)
 
+    from app.ai.observability import record_analysis, record_kafka_event
+
+    record_analysis(response, config.scenario)
+    kafka_status = "disabled"
+    kafka_event: dict[str, object] | None = None
+    if config.publish_kafka:
+        from app.ai.events import KafkaIncidentPublisher
+
+        try:
+            kafka_event = await KafkaIncidentPublisher(
+                bootstrap_servers=settings.kafka_bootstrap_servers,
+                topic=settings.kafka_analysis_topic,
+            ).publish(response, config.scenario)
+            kafka_status = "published"
+        except Exception as exc:
+            kafka_status = "failed"
+            print(f"Kafka publication failed: {type(exc).__name__}")
+    record_kafka_event(kafka_status)
+
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     result_dir = (
         config.output_dir.expanduser().resolve()
@@ -214,6 +234,10 @@ async def run_ai_incident_analyst(
         result_dir / "report.json",
         response.model_dump(mode="json"),
     )
+    write_json(
+        result_dir / "delivery.json",
+        {"kafka_status": kafka_status, "event": kafka_event},
+    )
     report_path = result_dir / "report.md"
     write_text(report_path, _render_report(response))
 
@@ -223,6 +247,7 @@ async def run_ai_incident_analyst(
     print(f"Validation errors: {len(response.validation_errors)}")
     print(f"Documentation sources: {len(response.report.sources) if response.report else 0}")
     print(f"Latency: {response.latency_ms:.3f} ms")
+    print(f"Kafka event: {kafka_status}")
     return {
         "status": response.status.value,
         "analysis_id": response.analysis_id,
@@ -230,5 +255,9 @@ async def run_ai_incident_analyst(
         "result_dir": result_dir,
         "report_path": report_path,
         "response": response,
-        "passed": response.status == IncidentAnalysisStatus.COMPLETED,
+        "kafka_status": kafka_status,
+        "passed": (
+            response.status == IncidentAnalysisStatus.COMPLETED
+            and kafka_status != "failed"
+        ),
     }

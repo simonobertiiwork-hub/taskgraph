@@ -171,3 +171,35 @@ change and zero after it, without mutating application tables.
 The 20-case dataset covers all three scenarios and prompt-injection-shaped
 questions. Offline evals report tool-selection accuracy, completion rate and
 evidence-grounding rate using `StubLLMProvider`; they never call Ollama.
+
+## Step 5: MCP, Kafka, Prometheus and final acceptance
+
+The MCP server uses the standard stdio transport and exposes two read-only
+operations. Verify a real client/server exchange:
+
+```bash
+docker compose exec app python -m demos mcp-smoke
+```
+
+To analyze an incident and publish its versioned completion event:
+
+```bash
+docker compose up -d db ollama kafka app
+docker compose exec app python -m demos ai-incident-analyst \
+  --scenario pool-exhaustion \
+  --publish-kafka
+```
+
+The application `/metrics` endpoint includes AI analysis, tool, validation,
+RAG-source and Kafka-delivery metric families. Questions, prompts and report
+text are excluded from metric labels and Kafka payloads.
+
+Run the complete offline-first acceptance check:
+
+```bash
+docker compose exec app python -m demos final-smoke --publish-kafka
+```
+
+This command runs the fixed 20-case eval set, performs an MCP stdio exchange,
+checks Prometheus registration and publishes the latest validated analysis
+event. Omit `--publish-kafka` when the broker is intentionally unavailable.

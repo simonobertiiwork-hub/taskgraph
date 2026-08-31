@@ -3,8 +3,14 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
+from app.ai import observability as ai_observability  # noqa: F401
+
 from app.core.handlers import register_exception_handlers
-from app.api import health_router, tasks_router, graph_router
+from app.api import (
+    health_router, 
+    tasks_router, 
+    graph_router
+)
 
 
 app = FastAPI(

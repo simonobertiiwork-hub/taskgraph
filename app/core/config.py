@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     rag_top_k: int = Field(default=5, ge=1, le=20)
     rag_score_threshold: float = Field(default=0.08, ge=0, le=1)
 
+    kafka_bootstrap_servers: str = "kafka:29092"
+    kafka_analysis_topic: str = "taskgraph.ai.incident.completed"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         extra="ignore",

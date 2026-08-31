@@ -178,6 +178,31 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_RESULTS_DIR,
         help="Root for generated AI analysis artifacts.",
     )
+    ai_parser.add_argument(
+        "--publish-kafka",
+        action="store_true",
+        help="Publish the completed analysis event to Kafka.",
+    )
+
+    mcp_parser = subparsers.add_parser(
+        "mcp-smoke",
+        help="Verify the real MCP stdio transport and evidence tool.",
+    )
+    mcp_parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    mcp_parser.add_argument(
+        "--scenario",
+        choices=("index-scan", "race-condition", "pool-exhaustion"),
+        default="pool-exhaustion",
+    )
+
+    final_parser = subparsers.add_parser(
+        "final-smoke",
+        help="Run offline evals, MCP transport, metrics, and optional Kafka acceptance.",
+    )
+    final_parser.add_argument("--dataset", type=Path, default=Path("demos/evals/incident_cases.json"))
+    final_parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    final_parser.add_argument("--output-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    final_parser.add_argument("--publish-kafka", action="store_true")
 
     return parser
 
@@ -318,6 +343,7 @@ async def run_ai_incident_analyst_command(args: argparse.Namespace) -> int:
                 "race-condition": RunScenario.RACE_CONDITION,
                 "pool-exhaustion": RunScenario.CONNECTION_POOL_EXHAUSTION,
             }[args.scenario],
+            publish_kafka=args.publish_kafka,
         ),
     )
     print()
@@ -372,6 +398,47 @@ async def run_ai_evals_command(args: argparse.Namespace) -> int:
     return 0 if result["passed"] else 1
 
 
+async def run_mcp_smoke_command(args: argparse.Namespace) -> int:
+    from demos.cases.mcp_smoke import MCPSmokeConfig, run_mcp_smoke
+
+    scenario = {
+        "index-scan": RunScenario.INDEX_SCAN,
+        "race-condition": RunScenario.RACE_CONDITION,
+        "pool-exhaustion": RunScenario.CONNECTION_POOL_EXHAUSTION,
+    }[args.scenario]
+    result = await run_mcp_smoke(
+        MCPSmokeConfig(results_dir=args.results_dir, scenario=scenario)
+    )
+    print("TaskGraph MCP transport smoke test")
+    print(f"Server: {result['server_name']}")
+    print(f"Tools: {', '.join(result['tools'])}")
+    print(f"Scenario: {result['scenario']}")
+    print(f"Result: {'PASSED' if result['passed'] else 'FAILED'}")
+    return 0 if result["passed"] else 1
+
+
+async def run_final_smoke_command(args: argparse.Namespace) -> int:
+    from app.core.config import settings
+    from demos.cases.final_smoke import FinalSmokeConfig, run_final_smoke
+
+    result = await run_final_smoke(
+        FinalSmokeConfig(
+            dataset_path=args.dataset,
+            results_dir=args.results_dir,
+            output_dir=args.output_dir,
+            publish_kafka=args.publish_kafka,
+            kafka_bootstrap_servers=settings.kafka_bootstrap_servers,
+            kafka_topic=settings.kafka_analysis_topic,
+        )
+    )
+    print("TaskGraph AI final smoke")
+    for key, value in result["summary"].items():
+        print(f"{key}: {value}")
+    print(f"Result: {'PASSED' if result['passed'] else 'FAILED'}")
+    print(f"Report: {result['report_path']}")
+    return 0 if result["passed"] else 1
+
+
 def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     """Dispatch one parsed demo command with consistent error handling."""
     command = {
@@ -382,6 +449,8 @@ def run_command(parser: argparse.ArgumentParser, args: argparse.Namespace) -> in
         "ai-incident-analyst": run_ai_incident_analyst_command,
         "rag-index": run_rag_index_command,
         "ai-evals": run_ai_evals_command,
+        "mcp-smoke": run_mcp_smoke_command,
+        "final-smoke": run_final_smoke_command,
     }.get(args.case)
 
     if command is None:

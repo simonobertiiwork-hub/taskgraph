@@ -16,6 +16,9 @@ Implement:
 - Event publishing
 - Topic-based communication
 - Event inspection through Kafka UI
+- Versioned `taskgraph.ai.incident.completed` events after validated AI analyses
+- Explicit opt-in publication so local tests never depend on a broker
+- Delivery outcome metrics without leaking the incident question
 
 ## Alternatives
 
@@ -35,3 +38,4 @@ Implement:
 - Additional infrastructure
 - More complex configuration
 - Requires topic and consumer management
+- The broker is not a source of truth; analysis artifacts remain durable files

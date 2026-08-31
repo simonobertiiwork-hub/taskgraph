@@ -5,7 +5,7 @@ Backend research project focused on reproducing and analyzing production-like ba
 
 ## Stack
 
-Python 3.12 • FastAPI • PostgreSQL • SQLAlchemy 2.0 (async) • asyncpg • Alembic • Redis • RabbitMQ • Celery • Apache Kafka • Kafka UI • Docker Compose • Kubernetes • Pytest • GitHub Actions • CI/CD • k6 • Prometheus • Grafana
+Python 3.12 • FastAPI • PostgreSQL/pgvector • SQLAlchemy 2.0 (async) • LangGraph • LangChain tools • Ollama • MCP • Apache Kafka • Prometheus • Docker Compose • Pytest • GitHub Actions
 
 ## Goal
 
@@ -18,6 +18,43 @@ TaskGraph reproduces production-like backend scenarios to investigate:
 
 Project philosophy:
 Reproduce → Measure → Understand → Fix → Verify
+
+## AI Incident Analyst
+
+The AI subsystem analyzes only versioned, checksum-verified demo evidence. A
+local Ollama model selects an allowlisted tool; the final technical report is
+assembled and validated deterministically, so a small model cannot invent
+measurements or return an invalid report.
+
+Implemented:
+
+- LangGraph workflow with bounded planning and repair routes;
+- four read-only evidence tools for index, race-condition, and pool incidents;
+- pgvector RAG over project documentation with incremental reindexing;
+- real MCP stdio server for external tool clients;
+- versioned Kafka completion events enabled only by an explicit flag;
+- Prometheus metrics for latency, tool calls, validation and delivery;
+- 20 deterministic offline eval cases executed in CI without Ollama or network.
+
+```mermaid
+flowchart TD
+    A["Verified run artifacts"] --> B["Allowlisted tools"]
+    D["pgvector documentation"] --> C["LangGraph analyst"]
+    B --> C
+    C --> E["Validated report"]
+    E --> F["Kafka event and Prometheus metrics"]
+    B --> G["MCP stdio server"]
+```
+
+Acceptance run after the three backend scenarios and one AI analysis exist:
+
+```bash
+docker compose exec app python -m demos final-smoke
+```
+
+Add `--publish-kafka` to verify real delivery to the Compose Kafka broker. The
+ordinary test suite and offline evals always use `StubLLMProvider` and never
+contact Ollama.
 
 ## Architecture
 
@@ -60,23 +97,12 @@ Reproduce:
 
 2. Connection Pool Exhaustion
 
-Before:
-pool_size=5
-max_overflow=0
+The reproducible demo applies five concurrent requests to an undersized pool,
+then repeats the identical load after matching pool capacity to concurrency.
+The verified result records three pool timeouts before and zero after.
 
-After:
-pool_size=20
-max_overflow=20
-
-Load testing:
-- k6
-- Prometheus
-- Grafana
-
-Result:
-p95: 35s → 29s
-
-failures: 76% → 0%
+Reproduce:
+`docker compose exec app python -m demos pool-exhaustion --confirm-load`
 
 Key finding:
 async != infinite parallelism
@@ -219,6 +245,7 @@ GitHub Actions pipeline automatically:
 - installs project dependencies
 - creates environment variables for tests
 - runs pytest test suite
+- runs the 20-case offline AI evaluation and MCP transport gate
 - builds Docker image
 - publishes Docker image to GitHub Container Registry (GHCR)
 
@@ -239,7 +266,7 @@ Performance:
 - connection pool investigation
 
 Run:
-docker compose run --rm app pytest tests/ -v
+`docker compose exec app python -m pytest -q`
 
 ---
 
